@@ -1,0 +1,425 @@
+//! Service layer for vault operations.
+
+use crate::crypto::VaultCrypto;
+use crate::error::{Result, VaultError};
+use crate::models::{VaultDocument, VaultEntry};
+use crate::parser::VaultParser;
+use crate::security::SessionManager;
+use crate::utils;
+use std::path::Path;
+
+/// Service for vault operations.
+pub struct VaultService {
+    crypto: VaultCrypto,
+    parser: VaultParser,
+}
+
+impl Default for VaultService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VaultService {
+    /// Create a new vault service.
+    pub fn new() -> Self {
+        Self {
+            crypto: VaultCrypto::new(),
+            parser: VaultParser::new(),
+        }
+    }
+
+    /// Load a vault document from file.
+    pub fn load_vault(&self, path: &Path) -> Result<VaultDocument> {
+        self.parser
+            .parse_file(path)
+            .map_err(|e| VaultError::Other(e.to_string()))
+    }
+
+    /// Save a vault document to file.
+    pub fn save_vault(&self, doc: &VaultDocument, path: &Path) -> Result<()> {
+        doc.save(path).map_err(VaultError::Io)
+    }
+
+    /// Add a new entry to the vault.
+    pub fn add_entry(
+        &self,
+        doc: &mut VaultDocument,
+        scope: String,
+        description: String,
+        secret: String,
+        password: &str,
+    ) -> Result<()> {
+        // Validate scope
+        if !utils::validate_scope_name(&scope) {
+            return Err(VaultError::InvalidScope(scope));
+        }
+
+        // Parse scope path
+        let scope_parts = utils::parse_scope_path(&scope);
+
+        // Check if entry already exists
+        if doc.find_entry(&scope_parts).is_some() {
+            return Err(VaultError::EntryExists(scope));
+        }
+
+        // Encrypt the secret
+        let (encrypted_content, salt) = self.crypto.encrypt(&secret, password)?;
+
+        // Create new entry
+        let entry = VaultEntry {
+            scope_path: scope_parts.clone(),
+            heading_level: scope_parts.len() as u8,
+            description,
+            encrypted_content,
+            salt: Some(salt),
+            start_line: 0,
+            end_line: 0,
+        };
+
+        // Add to document
+        doc.add_entry(entry)
+            .map_err(|e| VaultError::Other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Update an existing entry.
+    pub fn update_entry(
+        &self,
+        doc: &mut VaultDocument,
+        scope: &[String],
+        new_secret: Option<String>,
+        new_description: Option<String>,
+        password: &str,
+    ) -> Result<()> {
+        // Find entry
+        let entry_idx = doc
+            .entries
+            .iter()
+            .position(|e| e.scope_path == scope)
+            .ok_or_else(|| VaultError::EntryNotFound(utils::format_scope_path(scope)))?;
+
+        let entry = &mut doc.entries[entry_idx];
+
+        // Update description if provided
+        if let Some(desc) = new_description {
+            entry.description = desc;
+        }
+
+        // Update secret if provided
+        if let Some(secret) = new_secret {
+            let (encrypted_content, salt) = self.crypto.encrypt(&secret, password)?;
+            entry.encrypted_content = encrypted_content;
+            entry.salt = Some(salt);
+        }
+
+        Ok(())
+    }
+
+    /// Delete an entry from the vault.
+    pub fn delete_entry(&self, doc: &mut VaultDocument, scope: &[String]) -> Result<()> {
+        // Find entry
+        let entry_idx = doc
+            .entries
+            .iter()
+            .position(|e| e.scope_path == scope)
+            .ok_or_else(|| VaultError::EntryNotFound(utils::format_scope_path(scope)))?;
+
+        // Remove entry
+        doc.entries.remove(entry_idx);
+
+        Ok(())
+    }
+
+    /// Decrypt an entry.
+    pub fn decrypt_entry(&self, entry: &VaultEntry, password: &str) -> Result<String> {
+        // Check if entry has encrypted content
+        if entry.encrypted_content.is_empty() {
+            return Err(VaultError::NoEncryptedContent(entry.scope_string()));
+        }
+
+        // Check if entry has salt
+        let salt = entry
+            .salt
+            .as_ref()
+            .ok_or_else(|| VaultError::NoSalt(entry.scope_string()))?;
+
+        // Decrypt
+        self.crypto
+            .decrypt(&entry.encrypted_content, password, salt)
+            .map_err(|_| VaultError::DecryptionFailed)
+    }
+
+    /// Rename an entry (change its scope).
+    pub fn rename_entry(
+        &self,
+        doc: &mut VaultDocument,
+        old_scope: &[String],
+        new_scope: String,
+    ) -> Result<()> {
+        // Validate new scope
+        if !utils::validate_scope_name(&new_scope) {
+            return Err(VaultError::InvalidScope(new_scope));
+        }
+
+        let new_scope_parts = utils::parse_scope_path(&new_scope);
+
+        // Check if new scope already exists
+        if doc.find_entry(&new_scope_parts).is_some() {
+            return Err(VaultError::EntryExists(new_scope));
+        }
+
+        // Find entry
+        let entry = doc
+            .entries
+            .iter_mut()
+            .find(|e| e.scope_path == old_scope)
+            .ok_or_else(|| VaultError::EntryNotFound(utils::format_scope_path(old_scope)))?;
+
+        // Update scope
+        entry.scope_path = new_scope_parts.clone();
+        entry.heading_level = new_scope_parts.len() as u8;
+
+        Ok(())
+    }
+
+    /// Search entries by query.
+    pub fn search_entries<'a>(
+        &self,
+        doc: &'a VaultDocument,
+        query: &str,
+        in_description: bool,
+        case_sensitive: bool,
+    ) -> Vec<&'a VaultEntry> {
+        let query_lower = if case_sensitive {
+            query.to_string()
+        } else {
+            query.to_lowercase()
+        };
+
+        doc.entries
+            .iter()
+            .filter(|entry| {
+                let scope = entry.scope_string();
+                let scope_check = if case_sensitive {
+                    scope
+                } else {
+                    scope.to_lowercase()
+                };
+
+                let description_check = if case_sensitive {
+                    entry.description.clone()
+                } else {
+                    entry.description.to_lowercase()
+                };
+
+                if in_description {
+                    description_check.contains(&query_lower)
+                } else {
+                    scope_check.contains(&query_lower)
+                }
+            })
+            .collect()
+    }
+
+    /// Get password with session support.
+    pub fn get_password_with_session(
+        &self,
+        vault_path: &Path,
+        prompt: &str,
+        allow_cache: bool,
+    ) -> Result<String> {
+        // Check for active session
+        if allow_cache {
+            if let Some(session) = SessionManager::get_session(vault_path) {
+                if let Some(ref key) = session.cached_key {
+                    return Ok(String::from_utf8(key.clone())?);
+                }
+            }
+        }
+
+        // Prompt for password with masked input
+        use dialoguer::Password;
+        let password = Password::new()
+            .with_prompt(prompt.trim_end_matches(": "))
+            .interact()
+            .map_err(|e| VaultError::Other(e.to_string()))?;
+
+        if password.is_empty() {
+            return Err(VaultError::Cancelled);
+        }
+
+        // Create new session if caching is allowed
+        if allow_cache {
+            let mut session = SessionManager::create_session(vault_path);
+            session.cached_key = Some(password.as_bytes().to_vec());
+        }
+
+        Ok(password)
+    }
+
+    /// List all unique scopes in the vault.
+    pub fn list_scopes(&self, doc: &VaultDocument) -> Vec<String> {
+        let mut scopes: Vec<String> = doc.entries.iter().map(|e| e.scope_string()).collect();
+        scopes.sort();
+        scopes.dedup();
+        scopes
+    }
+
+    /// Get entries filtered by scope prefix.
+    pub fn get_entries_by_prefix<'a>(
+        &self,
+        doc: &'a VaultDocument,
+        prefix: &[String],
+    ) -> Vec<&'a VaultEntry> {
+        doc.entries
+            .iter()
+            .filter(|entry| {
+                entry.scope_path.len() >= prefix.len()
+                    && entry.scope_path[..prefix.len()] == *prefix
+            })
+            .collect()
+    }
+
+    /// Export entries to JSON format (without secrets).
+    pub fn export_metadata(&self, doc: &VaultDocument) -> serde_json::Value {
+        let entries: Vec<_> = doc
+            .entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "scope": e.scope_string(),
+                    "description": e.description,
+                    "has_content": !e.encrypted_content.is_empty(),
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "version": "v1",
+            "entry_count": entries.len(),
+            "entries": entries,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_add_and_decrypt_entry() {
+        let service = VaultService::new();
+        let mut doc = VaultDocument::new();
+        let password = "test_password";
+        let secret = "my_secret_value";
+
+        // Add entry
+        service
+            .add_entry(
+                &mut doc,
+                "test/entry".to_string(),
+                "Test entry".to_string(),
+                secret.to_string(),
+                password,
+            )
+            .unwrap();
+
+        // Find and decrypt
+        let entry = doc
+            .find_entry(&["test".to_string(), "entry".to_string()])
+            .unwrap();
+        let decrypted = service.decrypt_entry(entry, password).unwrap();
+
+        assert_eq!(decrypted, secret);
+    }
+
+    #[test]
+    fn test_search_entries() {
+        let service = VaultService::new();
+        let mut doc = VaultDocument::new();
+        let password = "test_password";
+
+        // Add some entries
+        service
+            .add_entry(
+                &mut doc,
+                "personal/email".to_string(),
+                "Personal email account".to_string(),
+                "secret1".to_string(),
+                password,
+            )
+            .unwrap();
+
+        service
+            .add_entry(
+                &mut doc,
+                "work/email".to_string(),
+                "Work email account".to_string(),
+                "secret2".to_string(),
+                password,
+            )
+            .unwrap();
+
+        service
+            .add_entry(
+                &mut doc,
+                "personal/banking".to_string(),
+                "Banking credentials".to_string(),
+                "secret3".to_string(),
+                password,
+            )
+            .unwrap();
+
+        // Search in scope
+        let results = service.search_entries(&doc, "email", false, false);
+        assert_eq!(results.len(), 2);
+
+        // Search in description
+        let results = service.search_entries(&doc, "account", true, false);
+        assert_eq!(results.len(), 2);
+
+        // Case sensitive search
+        let results = service.search_entries(&doc, "EMAIL", false, true);
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_rename_entry() {
+        let service = VaultService::new();
+        let mut doc = VaultDocument::new();
+        let password = "test_password";
+
+        // Add entry
+        service
+            .add_entry(
+                &mut doc,
+                "old/path".to_string(),
+                "Test entry".to_string(),
+                "secret".to_string(),
+                password,
+            )
+            .unwrap();
+
+        // Rename
+        service
+            .rename_entry(
+                &mut doc,
+                &["old".to_string(), "path".to_string()],
+                "new/path".to_string(),
+            )
+            .unwrap();
+
+        // Verify old path doesn't exist
+        assert!(doc
+            .find_entry(&["old".to_string(), "path".to_string()])
+            .is_none());
+
+        // Verify new path exists
+        assert!(doc
+            .find_entry(&["new".to_string(), "path".to_string()])
+            .is_some());
+    }
+}

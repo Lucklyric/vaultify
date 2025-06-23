@@ -1,0 +1,53 @@
+{
+  "name": "@vault-cli/vault",
+  "version": "1.0.0",
+  "description": "A secure password manager with hierarchical organization",
+  "main": "index.js",
+  "bin": {
+    "vault": "./bin/vault"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lucklyric/vault-cli.git"
+  },
+  "keywords": [
+    "password",
+    "vault",
+    "security",
+    "encryption",
+    "cli",
+    "password-manager"
+  ],
+  "author": "vault-cli contributors",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/Lucklyric/vault-cli/issues"
+  },
+  "homepage": "https://github.com/Lucklyric/vault-cli#readme",
+  "files": [
+    "bin/",
+    "index.js",
+    "install.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "dependencies": {
+    "node-fetch": "^2.6.7",
+    "tar": "^6.1.11"
+  }
+}
