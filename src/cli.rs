@@ -7,8 +7,8 @@ use crate::utils::{self, success};
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 /// Secure password manager with hierarchical organization.
 #[derive(Parser, Debug)]
@@ -206,7 +206,10 @@ impl Cli {
                 scope,
                 description,
                 editor,
-            } => self.edit_entry(scope.clone(), description.clone(), *editor).await,
+            } => {
+                self.edit_entry(scope.clone(), description.clone(), *editor)
+                    .await
+            }
             Commands::Delete { scope, force } => self.delete_entry(scope.clone(), *force),
             Commands::Rename {
                 old_scope,
@@ -217,7 +220,9 @@ impl Cli {
                 armor,
                 backup,
             } => self.gpg_encrypt(recipient.as_deref(), *armor, *backup),
-            Commands::GpgDecrypt { input, output } => self.gpg_decrypt(input.as_deref(), output.as_deref()),
+            Commands::GpgDecrypt { input, output } => {
+                self.gpg_decrypt(input.as_deref(), output.as_deref())
+            }
         }
     }
 
@@ -322,13 +327,10 @@ impl Cli {
             // Display as tree with descriptions
             let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
             let tree_lines = utils::format_tree(&scopes);
-            
+
             for line in tree_lines.iter() {
                 // Find the corresponding entry
-                if let Some(entry) = result.entries
-                    .iter()
-                    .find(|e| line.contains(&e.scope)) {
-                    
+                if let Some(entry) = result.entries.iter().find(|e| line.contains(&e.scope)) {
                     if !entry.has_content {
                         println!("{} {} - {}", line, "[empty]".yellow(), entry.description);
                     } else {
@@ -347,17 +349,23 @@ impl Cli {
                         println!("Entries matching '{}':", filter);
                         println!();
                     }
-                    
+
                     for entry in &result.entries {
                         if entry.has_content {
                             println!("{} - {}", entry.scope.cyan(), entry.description);
                         } else {
-                            println!("{} {} - {}", entry.scope.cyan(), "[empty]".yellow(), entry.description);
+                            println!(
+                                "{} {} - {}",
+                                entry.scope.cyan(),
+                                "[empty]".yellow(),
+                                entry.description
+                            );
                         }
                     }
                 }
                 OutputFormat::Json => {
-                    let entries: Vec<serde_json::Value> = result.entries
+                    let entries: Vec<serde_json::Value> = result
+                        .entries
                         .into_iter()
                         .map(|entry| {
                             serde_json::json!({
@@ -433,7 +441,13 @@ impl Cli {
         };
 
         // Edit entry
-        ops.edit_entry(&vault_path, &scope, new_secret.as_deref(), description.as_deref(), &password)?;
+        ops.edit_entry(
+            &vault_path,
+            &scope,
+            new_secret.as_deref(),
+            description.as_deref(),
+            &password,
+        )?;
 
         success(&format!("Updated: {}", scope));
         Ok(())
@@ -476,7 +490,6 @@ impl Cli {
         Ok(())
     }
 
-
     /// Encrypt vault file with GPG.
     fn gpg_encrypt(&self, recipient: Option<&str>, armor: bool, backup: bool) -> Result<()> {
         let vault_path = self.get_vault_file()?;
@@ -489,7 +502,7 @@ impl Cli {
 
         // Perform encryption
         let output_path = GpgOperations::encrypt_vault(&vault_path, recipient, armor)?;
-        
+
         success(&format!(
             "Vault encrypted successfully: {}",
             output_path.display()
@@ -521,14 +534,14 @@ impl Cli {
                 asc_path
             } else {
                 return Err(VaultError::Other(
-                    "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+                    "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string(),
                 ));
             }
         };
 
         // Perform decryption
         let output_path = GpgOperations::decrypt_vault(&encrypted_path, output)?;
-        
+
         success(&format!(
             "Vault decrypted successfully: {}",
             output_path.display()

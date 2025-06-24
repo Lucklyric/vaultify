@@ -38,14 +38,23 @@ function getArch() {
 }
 
 function getBinaryName() {
-  const platform = getPlatform();
-  const arch = getArch();
-  return `vault-${arch}-${platform}`;
+  // Match the naming in our GitHub release workflow
+  if (process.platform === 'linux' && process.arch === 'x64') {
+    return 'vault-linux-x64';
+  } else if (process.platform === 'darwin' && process.arch === 'x64') {
+    return 'vault-macos-x64';
+  } else if (process.platform === 'darwin' && process.arch === 'arm64') {
+    return 'vault-macos-arm64';
+  } else if (process.platform === 'win32' && process.arch === 'x64') {
+    return 'vault-windows-x64';
+  }
+  throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
 }
 
 function getBinaryUrl() {
   const binaryName = getBinaryName();
-  return `https://github.com/${REPO}/releases/download/v${VERSION}/${binaryName}.tar.gz`;
+  const ext = process.platform === 'win32' ? '.zip' : '.tar.gz';
+  return `https://github.com/${REPO}/releases/download/v${VERSION}/${binaryName}${ext}`;
 }
 
 function downloadBinary(url, dest) {
@@ -73,12 +82,21 @@ function downloadBinary(url, dest) {
   });
 }
 
-async function extractBinary(tarPath, destDir) {
+async function extractBinary(archivePath, destDir) {
   console.log('Extracting binary...');
-  await tar.extract({
-    file: tarPath,
-    cwd: destDir,
-  });
+  
+  if (process.platform === 'win32') {
+    // For Windows, we need to extract zip files
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(archivePath);
+    zip.extractAllTo(destDir, true);
+  } else {
+    // For Unix systems, extract tar.gz
+    await tar.extract({
+      file: archivePath,
+      cwd: destDir,
+    });
+  }
 }
 
 async function install() {
@@ -99,14 +117,15 @@ async function install() {
     
     // Download binary
     const url = getBinaryUrl();
-    const tarPath = path.join(binDir, 'vault.tar.gz');
+    const ext = process.platform === 'win32' ? '.zip' : '.tar.gz';
+    const archivePath = path.join(binDir, `vault${ext}`);
     
     try {
-      await downloadBinary(url, tarPath);
-      await extractBinary(tarPath, binDir);
+      await downloadBinary(url, archivePath);
+      await extractBinary(archivePath, binDir);
       
-      // Clean up tar file
-      fs.unlinkSync(tarPath);
+      // Clean up archive file
+      fs.unlinkSync(archivePath);
       
       // Make binary executable on Unix
       if (process.platform !== 'win32') {
