@@ -15,7 +15,7 @@ async fn main() {
     colored::control::set_virtual_terminal(true).ok();
 
     // Clean up any old temp files from previous sessions
-    let _ = vault_cli::utils::cleanup_old_temp_files();
+    let _ = vault_cli::secure_temp::cleanup_old_temp_files();
 
     // Parse command line arguments
     let args = std::env::args().collect::<Vec<_>>();
@@ -30,7 +30,7 @@ async fn main() {
     }
 
     // Clean up temp files on exit
-    let _ = vault_cli::utils::cleanup_old_temp_files();
+    let _ = vault_cli::secure_temp::cleanup_old_temp_files();
 }
 
 /// Run in CLI mode.

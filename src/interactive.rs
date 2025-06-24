@@ -1,19 +1,19 @@
 //! Interactive mode for vault operations.
 
 use crate::error::{Result, VaultError};
-use crate::security::{ClipboardManager, SessionManager};
-use crate::service::VaultService;
+use crate::gpg::GpgOperations;
+use crate::operations::VaultOperations;
 use crate::utils::{self, success, warning};
 use colored::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use std::io::{self, Write};
 use std::path::PathBuf;
-use zeroize::Zeroize;
 
 /// Interactive vault shell.
 pub struct InteractiveVault {
     vault_path: PathBuf,
-    service: VaultService,
+    ops: VaultOperations,
     editor: DefaultEditor,
 }
 
@@ -36,7 +36,7 @@ impl InteractiveVault {
 
         Ok(Self {
             vault_path,
-            service: VaultService::new(),
+            ops: VaultOperations::new(),
             editor,
         })
     }
@@ -46,7 +46,10 @@ impl InteractiveVault {
         self.print_welcome();
 
         // Load vault once to verify structure
-        self.service.load_vault(&self.vault_path)?;
+        self.ops.load_vault(&self.vault_path)?;
+
+        // Show help on startup
+        self.show_help();
 
         loop {
             let prompt = format!("{} ", "vault>".cyan());
@@ -94,7 +97,6 @@ impl InteractiveVault {
                 self.show_help();
                 Ok(())
             }
-            "list" | "ls" => self.list_entries(parts.get(1).copied()),
             "add" => {
                 if parts.len() < 2 {
                     eprintln!("Usage: add <scope>");
@@ -103,28 +105,13 @@ impl InteractiveVault {
                     self.add_entry(parts[1]).await
                 }
             }
-            "show" | "decrypt" => {
+            "list" | "ls" => self.list_entries(parts.get(1).copied()),
+            "decrypt" => {
                 if parts.len() < 2 {
-                    eprintln!("Usage: show <scope>");
+                    eprintln!("Usage: decrypt <scope>");
                     Ok(())
                 } else {
-                    self.show_entry(parts[1], false).await
-                }
-            }
-            "copy" | "cp" => {
-                if parts.len() < 2 {
-                    eprintln!("Usage: copy <scope>");
-                    Ok(())
-                } else {
-                    self.show_entry(parts[1], true).await
-                }
-            }
-            "copyq" | "cq" => {
-                if parts.len() < 2 {
-                    eprintln!("Usage: copyq <scope>");
-                    Ok(())
-                } else {
-                    self.copy_quiet(parts[1]).await
+                    self.decrypt_entry(parts[1]).await
                 }
             }
             "edit" => {
@@ -151,30 +138,13 @@ impl InteractiveVault {
                     self.rename_entry(parts[1], parts[2])
                 }
             }
-            "search" => {
-                if parts.len() < 2 {
-                    eprintln!("Usage: search <query>");
-                    Ok(())
-                } else {
-                    let query = parts[1..].join(" ");
-                    self.search_entries(&query)
-                }
-            }
-            "status" => {
-                self.show_status();
-                Ok(())
-            }
-            "lock" => {
-                SessionManager::clear_session(&self.vault_path);
-                success("Session locked");
-                Ok(())
-            }
+            "gpg-encrypt" => self.gpg_encrypt_interactive(),
+            "gpg-decrypt" => self.gpg_decrypt_interactive(),
             "exit" | "quit" => {
                 self.cleanup();
                 std::process::exit(0);
             }
             "clear" => {
-                // Clear screen
                 utils::clear_screen();
                 Ok(())
             }
@@ -192,65 +162,62 @@ impl InteractiveVault {
     fn show_help(&self) {
         println!("\n{}", "Available Commands:".bold());
         println!("  {}        - Show this help", "help".cyan());
-        println!("  {} [filter] - List entries", "list".cyan());
         println!("  {} <scope>  - Add new entry", "add".cyan());
-        println!("  {} <scope>  - Show entry", "show".cyan());
-        println!("  {} <scope>  - Copy to clipboard", "copy".cyan());
-        println!("  {} <scope>  - Copy directly (no display)", "copyq".cyan());
+        println!("  {} [filter] - List entries (filter searches scope & description)", "list".cyan());
+        println!("  {} <scope> - Decrypt entry", "decrypt".cyan());
         println!("  {} <scope>  - Edit entry", "edit".cyan());
         println!("  {} <scope> - Delete entry", "delete".cyan());
         println!("  {} <old> <new> - Rename entry", "rename".cyan());
-        println!("  {} <query> - Search entries", "search".cyan());
-        println!("  {}      - Show session status", "status".cyan());
-        println!("  {}        - Lock session", "lock".cyan());
+        println!("  {}   - Encrypt vault with GPG", "gpg-encrypt".cyan());
+        println!("  {}   - Decrypt GPG-encrypted vault", "gpg-decrypt".cyan());
         println!("  {}       - Clear screen", "clear".cyan());
         println!("  {}        - Exit interactive mode", "exit".cyan());
         println!();
         println!("{}", "Security Tips:".bold().cyan());
-        println!("  • Secrets are shown with a warning prompt");
-        println!("  • You'll be asked to clear screen after viewing");
-        println!("  • Clipboard is auto-cleared after 10 seconds");
-        println!("  • Use 'clear' command anytime to clear screen");
+        println!("  • Secrets can be displayed or copied to clipboard");
+        println!("  • Clipboard is auto-cleared after timeout");
+        println!("  • GPG encryption adds an extra security layer");
         println!();
     }
 
     /// List vault entries.
     fn list_entries(&self, filter: Option<&str>) -> Result<()> {
-        let doc = self.service.load_vault(&self.vault_path)?;
+        let result = self.ops.list_entries(&self.vault_path, filter)?;
 
-        // Get scopes with their encryption status
-        let mut scopes_with_status: Vec<(String, bool)> = doc
-            .entries
-            .iter()
-            .map(|e| (e.scope_string(), !e.encrypted_content.trim().is_empty()))
-            .collect();
-
-        // Apply filter if provided
-        if let Some(prefix) = filter {
-            let prefix_parts = utils::parse_scope_path(prefix);
-            scopes_with_status.retain(|(s, _)| {
-                let parts = utils::parse_scope_path(s);
-                parts.len() >= prefix_parts.len() && parts[..prefix_parts.len()] == prefix_parts[..]
-            });
-        }
-
-        if scopes_with_status.is_empty() {
+        if result.entries.is_empty() {
             println!("No entries found");
         } else {
-            println!("\n{}", "Vault Entries:".bold());
-            let scopes: Vec<String> = scopes_with_status.iter().map(|(s, _)| s.clone()).collect();
-            let tree_lines = utils::format_tree(&scopes);
+            // When filtering, show full paths instead of tree
+            if filter.is_some() {
+                println!("\n{} '{}':", "Entries matching".bold(), filter.unwrap());
+                println!();
+                for entry in &result.entries {
+                    if !entry.has_content {
+                        println!("  {} {} - {}", entry.scope.cyan(), "[empty]".yellow(), entry.description);
+                    } else {
+                        println!("  {} - {}", entry.scope.cyan(), entry.description);
+                    }
+                }
+            } else {
+                // No filter, show as tree
+                println!("\n{}", "Vault Entries:".bold());
+                let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
+                let tree_lines = utils::format_tree(&scopes);
 
-            for line in tree_lines {
-                // Find if this line represents an empty entry
-                let is_empty = scopes_with_status
-                    .iter()
-                    .any(|(scope, has_content)| line.contains(scope) && !*has_content);
-
-                if is_empty {
-                    println!("  {} {}", line, "[empty]".yellow());
-                } else {
-                    println!("  {}", line);
+                for line in tree_lines {
+                    // Find if this line represents an entry
+                    if let Some(entry) = result.entries
+                        .iter()
+                        .find(|e| line.contains(&e.scope)) {
+                        
+                        if !entry.has_content {
+                            println!("  {} {} - {}", line, "[empty]".yellow(), entry.description);
+                        } else {
+                            println!("  {} - {}", line, entry.description);
+                        }
+                    } else {
+                        println!("  {}", line);
+                    }
                 }
             }
         }
@@ -260,11 +227,8 @@ impl InteractiveVault {
 
     /// Add a new entry.
     async fn add_entry(&mut self, scope: &str) -> Result<()> {
-        let mut doc = self.service.load_vault(&self.vault_path)?;
-
-        // Get description with placeholder
+        // Get description
         print!("Description (e.g., {} credentials): ", scope);
-        use std::io::{self, Write};
         io::stdout().flush()?;
         let mut description = String::new();
         io::stdin().read_line(&mut description)?;
@@ -275,161 +239,95 @@ impl InteractiveVault {
             description
         };
 
-        // Get password with confirmation for new entries
+        // Get password with confirmation
         let password = self.get_password_with_confirmation()?;
 
-        // Get secret using system editor
-        let template = format!(
-            "# Enter secret for: {}\n# Lines starting with # will be ignored\n# Save and close the editor when done\n\n",
-            scope
-        );
-        let secret = utils::launch_editor(&template)?;
-
-        // Remove comment lines
-        let secret = secret
-            .lines()
-            .filter(|line| !line.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if secret.trim().is_empty() {
-            return Err(VaultError::NoSecret);
-        }
+        // Get secret value using editor
+        println!("Opening editor for secret input...");
+        let secret = crate::secure_temp::get_secret_from_editor(None)?;
 
         // Add entry
-        self.service
-            .add_entry(&mut doc, scope.to_string(), description, secret, &password)?;
-
-        // Save
-        self.service.save_vault(&doc, &self.vault_path)?;
+        self.ops.add_entry(&self.vault_path, scope, &description, &secret, &password)?;
         success(&format!("Added: {}", scope));
 
-        // Update session
-        SessionManager::update_activity(&self.vault_path);
-
         Ok(())
     }
 
-    /// Show or copy entry.
-    async fn show_entry(&mut self, scope: &str, copy: bool) -> Result<()> {
-        let doc = self.service.load_vault(&self.vault_path)?;
-        let scope_parts = utils::parse_scope_path(scope);
+    /// Decrypt and display entry.
+    async fn decrypt_entry(&mut self, scope: &str) -> Result<()> {
+        // Get password
+        let password = self.ops.get_password(&self.vault_path, "Enter vault password", true)?;
 
-        let entry = doc
-            .find_entry(&scope_parts)
-            .ok_or_else(|| VaultError::EntryNotFound(scope.to_string()))?;
+        // Decrypt
+        let result = self.ops.decrypt_entry(&self.vault_path, scope, &password)?;
 
-        let password = self.get_password(true)?;
-        let mut plaintext = self.service.decrypt_entry(entry, &password)?;
+        // Display options
+        println!("\n{}", "=".repeat(50));
+        println!("{}: {}", "Scope".bold(), result.scope);
+        println!("{}: {}", "Description".bold(), result.description);
+        println!("{}", "=".repeat(50));
 
-        if copy {
-            ClipboardManager::copy_with_timeout(&plaintext, 10).await?;
-            success("Copied to clipboard (will clear in 10 seconds)");
-            plaintext.zeroize();
+        print!("\nDisplay the secret in plaintext? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut display_response = String::new();
+        io::stdin().read_line(&mut display_response)?;
+
+        if display_response.trim().to_lowercase() == "y" {
+            // Display plaintext
+            println!("\n{} Sensitive data displayed below:", "⚠️ Warning:".yellow().bold());
+            println!("{}", "=".repeat(50));
+            println!("{}", result.plaintext);
+            println!("{}", "=".repeat(50));
         } else {
-            // Warning before showing
-            println!(
-                "\n{} Sensitive data will be displayed on screen",
-                "⚠️ Warning:".yellow().bold()
-            );
-            println!("Press Enter to continue or Ctrl+C to cancel...");
-            let mut _wait = String::new();
-            io::stdin().read_line(&mut _wait)?;
-
-            println!("\n{}", "=".repeat(50));
-            println!("{}: {}", "Scope".bold(), scope);
-            println!("{}: {}", "Description".bold(), entry.description);
+            // Display masked text
+            let masked = "*".repeat(result.plaintext.len());
+            println!("\n{} Secret (masked):", "🔒".cyan());
             println!("{}", "=".repeat(50));
-            println!("{}", plaintext);
+            println!("{}", masked);
             println!("{}", "=".repeat(50));
-
-            // Ask if user wants to copy to clipboard
-            println!();
-            print!("Copy to clipboard? [y/N]: ");
-            use std::io::{self, Write};
-            io::stdout().flush()?;
-
-            let mut response = String::new();
-            io::stdin().read_line(&mut response)?;
-
-            if response.trim().to_lowercase() == "y" {
-                ClipboardManager::copy_with_timeout(&plaintext, 10).await?;
-                success("Copied to clipboard (will clear in 10 seconds)");
-            }
-
-            // Ask to clear screen
-            println!();
-            print!("Clear screen? [Y/n]: ");
-            io::stdout().flush()?;
-
-            let mut clear_response = String::new();
-            io::stdin().read_line(&mut clear_response)?;
-
-            if clear_response.trim().to_lowercase() != "n" {
-                // Clear screen
-                utils::clear_screen();
-                success("Screen cleared");
-            }
-
-            // Clear sensitive data from memory
-            plaintext.zeroize();
+            println!("Length: {} characters", result.plaintext.len());
         }
 
-        // Update session
-        SessionManager::update_activity(&self.vault_path);
+        // Always ask if user wants to copy to clipboard
+        println!();
+        print!("Copy to time-locked clipboard (60 seconds)? [y/N]: ");
+        io::stdout().flush()?;
 
-        Ok(())
-    }
+        let mut clipboard_response = String::new();
+        io::stdin().read_line(&mut clipboard_response)?;
 
-    /// Copy entry to clipboard without displaying (secure).
-    async fn copy_quiet(&mut self, scope: &str) -> Result<()> {
-        let doc = self.service.load_vault(&self.vault_path)?;
-        let scope_parts = utils::parse_scope_path(scope);
+        if clipboard_response.trim().to_lowercase() == "y" {
+            use crate::security::ClipboardManager;
+            ClipboardManager::copy_with_timeout(&result.plaintext, 60).await?;
+            success("Copied to clipboard (will clear in 60 seconds)");
+        }
 
-        let entry = doc
-            .find_entry(&scope_parts)
-            .ok_or_else(|| VaultError::EntryNotFound(scope.to_string()))?;
+        // Ask to clear screen
+        println!();
+        print!("Clear screen? [Y/n]: ");
+        io::stdout().flush()?;
 
-        let password = self.get_password(true)?;
-        let mut plaintext = self.service.decrypt_entry(entry, &password)?;
+        let mut clear_response = String::new();
+        io::stdin().read_line(&mut clear_response)?;
 
-        // Copy directly to clipboard without showing
-        ClipboardManager::copy_with_timeout(&plaintext, 10).await?;
-        success("Copied to clipboard (will clear in 10 seconds)");
-        success("Secret was not displayed on screen for security");
-
-        // Clear sensitive data
-        plaintext.zeroize();
-
-        // Update session
-        SessionManager::update_activity(&self.vault_path);
+        if clear_response.trim().to_lowercase() != "n" {
+            utils::clear_screen();
+            success("Screen cleared");
+        }
 
         Ok(())
     }
 
     /// Edit an existing entry.
     async fn edit_entry(&mut self, scope: &str) -> Result<()> {
-        let mut doc = self.service.load_vault(&self.vault_path)?;
-        let scope_parts = utils::parse_scope_path(scope);
+        // Get password
+        let password = self.ops.get_password(&self.vault_path, "Enter vault password", true)?;
 
-        // Check entry exists
-        let entry = doc
-            .find_entry(&scope_parts)
-            .ok_or_else(|| VaultError::EntryNotFound(scope.to_string()))?
-            .clone();
-
-        // Get password and decrypt current value
-        let password = self.get_password(true)?;
-        let _current_secret = self.service.decrypt_entry(&entry, &password)?;
-
-        println!(
-            "Editing: {} (press Enter twice to keep current value)",
-            scope
-        );
+        println!("Editing: {} (press Enter to keep current value)", scope);
 
         // Get new description
-        print!("Description [{}]: ", entry.description);
-        use std::io::{self, Write};
+        print!("New description (or Enter to keep current): ");
         io::stdout().flush()?;
         let mut new_description = String::new();
         io::stdin().read_line(&mut new_description)?;
@@ -437,46 +335,24 @@ impl InteractiveVault {
         let new_description = if new_description.is_empty() {
             None
         } else {
-            Some(new_description.to_string())
+            Some(new_description)
         };
 
         // Get new secret
-        println!("Enter new secret (press Enter twice to keep current):");
-        let mut secret_lines = Vec::new();
-        let mut empty_count = 0;
+        print!("Edit secret? [y/N]: ");
+        io::stdout().flush()?;
+        let mut edit_response = String::new();
+        io::stdin().read_line(&mut edit_response)?;
 
-        loop {
-            let mut line = String::new();
-            io::stdin().read_line(&mut line)?;
-
-            if line.trim().is_empty() {
-                empty_count += 1;
-                if empty_count >= 2 {
-                    break;
-                }
-            } else {
-                empty_count = 0;
-                secret_lines.push(line.trim_end().to_string());
-            }
-        }
-
-        let new_secret = if secret_lines.is_empty() {
-            None
+        let new_secret = if edit_response.trim().to_lowercase() == "y" {
+            println!("Opening editor for secret input...");
+            Some(crate::secure_temp::get_secret_from_editor(None)?)
         } else {
-            Some(secret_lines.join("\n"))
+            None
         };
 
         // Update entry
-        self.service.update_entry(
-            &mut doc,
-            &scope_parts,
-            new_secret,
-            new_description,
-            &password,
-        )?;
-
-        // Save
-        self.service.save_vault(&doc, &self.vault_path)?;
+        self.ops.edit_entry(&self.vault_path, scope, new_secret.as_deref(), new_description, &password)?;
         success(&format!("Updated: {}", scope));
 
         Ok(())
@@ -484,12 +360,8 @@ impl InteractiveVault {
 
     /// Delete an entry.
     fn delete_entry(&mut self, scope: &str) -> Result<()> {
-        let mut doc = self.service.load_vault(&self.vault_path)?;
-        let scope_parts = utils::parse_scope_path(scope);
-
         // Confirm deletion
-        print!("Delete '{}'? (y/N): ", scope);
-        use std::io::{self, Write};
+        print!("Delete '{}'? [y/N]: ", scope);
         io::stdout().flush()?;
         let mut confirm = String::new();
         io::stdin().read_line(&mut confirm)?;
@@ -500,8 +372,7 @@ impl InteractiveVault {
         }
 
         // Delete
-        self.service.delete_entry(&mut doc, &scope_parts)?;
-        self.service.save_vault(&doc, &self.vault_path)?;
+        self.ops.delete_entry(&self.vault_path, scope)?;
         success(&format!("Deleted: {}", scope));
 
         Ok(())
@@ -509,56 +380,11 @@ impl InteractiveVault {
 
     /// Rename an entry.
     fn rename_entry(&mut self, old_scope: &str, new_scope: &str) -> Result<()> {
-        let mut doc = self.service.load_vault(&self.vault_path)?;
-        let old_parts = utils::parse_scope_path(old_scope);
-
-        self.service
-            .rename_entry(&mut doc, &old_parts, new_scope.to_string())?;
-        self.service.save_vault(&doc, &self.vault_path)?;
+        self.ops.rename_entry(&self.vault_path, old_scope, new_scope)?;
         success(&format!("Renamed: {} -> {}", old_scope, new_scope));
-
         Ok(())
     }
 
-    /// Search entries.
-    fn search_entries(&self, query: &str) -> Result<()> {
-        let doc = self.service.load_vault(&self.vault_path)?;
-        let matches = self.service.search_entries(&doc, query, true, false);
-
-        if matches.is_empty() {
-            println!("No matches found");
-        } else {
-            println!("\nFound {} matches:", matches.len());
-            for entry in matches {
-                println!("  {} - {}", entry.scope_string().cyan(), entry.description);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Show session status.
-    fn show_status(&self) {
-        if let Some(session) = SessionManager::get_session(&self.vault_path) {
-            let remaining = session.remaining_seconds();
-            println!(
-                "{}: Active ({} seconds remaining)",
-                "Session".bold(),
-                remaining
-            );
-        } else {
-            println!("{}: Locked", "Session".bold());
-        }
-    }
-
-    /// Get password with caching.
-    fn get_password(&self, allow_cache: bool) -> Result<String> {
-        self.service.get_password_with_session(
-            &self.vault_path,
-            "Enter vault password",
-            allow_cache,
-        )
-    }
 
     /// Get password with confirmation for new entries.
     fn get_password_with_confirmation(&self) -> Result<String> {
@@ -589,45 +415,163 @@ impl InteractiveVault {
 
     /// Print welcome message.
     fn print_welcome(&self) {
-        println!("\n{}", "Vault Interactive Mode".bold().cyan());
+        println!("\n{}", "Vault CLI - Interactive Mode".bold().cyan());
         println!("Type 'help' for available commands");
-        println!("Vault: {}\n", self.vault_path.display());
+        println!("Vault: {}", self.vault_path.display());
+        println!();
     }
 
     /// Cleanup on exit.
     fn cleanup(&self) {
-        SessionManager::clear_session(&self.vault_path);
-        // Also clean up any temp files we might have created
-        let _ = utils::cleanup_old_temp_files();
+        println!("\nGoodbye!");
     }
-}
 
-impl Drop for InteractiveVault {
-    fn drop(&mut self) {
-        // Ensure cleanup happens even on unexpected exit
-        self.cleanup();
+    /// Get password for non-new operations.
+    fn get_password(&self) -> Result<String> {
+        self.ops.get_password(&self.vault_path, "Enter vault password", true)
+    }
+
+    /// Encrypt vault file with GPG (interactive).
+    fn gpg_encrypt_interactive(&self) -> Result<()> {
+        // Ask for encryption options
+        print!("Use asymmetric encryption with GPG key? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut response = String::new();
+        io::stdin().read_line(&mut response)?;
+
+        let recipient = if response.trim().to_lowercase() == "y" {
+            // List available keys
+            match GpgOperations::list_keys() {
+                Ok(keys) if !keys.is_empty() => {
+                    println!("\nAvailable GPG keys:");
+                    for (i, key) in keys.iter().enumerate() {
+                        println!("  {}. {}", i + 1, key);
+                    }
+                    print!("\nEnter recipient email or key ID: ");
+                    io::stdout().flush()?;
+
+                    let mut recipient_input = String::new();
+                    io::stdin().read_line(&mut recipient_input)?;
+                    Some(recipient_input.trim().to_string())
+                }
+                _ => {
+                    warning("No GPG keys found. Using symmetric encryption.");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Ask for ASCII armor
+        print!("\nCreate ASCII armored output (.asc)? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut armor_response = String::new();
+        io::stdin().read_line(&mut armor_response)?;
+        let armor = armor_response.trim().to_lowercase() == "y";
+
+        // Create backup
+        let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
+        println!("Created backup: {}", backup_path.display());
+
+        // Perform encryption
+        let output_path = GpgOperations::encrypt_vault(&self.vault_path, recipient.as_deref(), armor)?;
+        
+        success(&format!(
+            "Vault encrypted successfully: {}",
+            output_path.display()
+        ));
+
+        if recipient.is_some() {
+            println!("Encrypted for recipient: {}", recipient.unwrap());
+        } else {
+            println!("Encrypted with symmetric key (password-based)");
+        }
+
+        Ok(())
+    }
+
+    /// Decrypt GPG-encrypted vault file (interactive).
+    fn gpg_decrypt_interactive(&self) -> Result<()> {
+        // Try to find encrypted vault
+        let gpg_path = self.vault_path.with_extension("md.gpg");
+        let asc_path = self.vault_path.with_extension("md.asc");
+
+        let encrypted_path = if gpg_path.exists() && asc_path.exists() {
+            // Both exist, ask which one to use
+            println!("\nFound multiple encrypted files:");
+            println!("  1. {}", gpg_path.display());
+            println!("  2. {}", asc_path.display());
+            print!("\nWhich file to decrypt? [1/2]: ");
+            io::stdout().flush()?;
+
+            let mut choice = String::new();
+            io::stdin().read_line(&mut choice)?;
+
+            if choice.trim() == "2" {
+                asc_path
+            } else {
+                gpg_path
+            }
+        } else if gpg_path.exists() {
+            gpg_path
+        } else if asc_path.exists() {
+            asc_path
+        } else {
+            return Err(VaultError::Other(
+                "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+            ));
+        };
+
+        println!("Decrypting: {}", encrypted_path.display());
+
+        // Check if vault.md already exists
+        if self.vault_path.exists() {
+            print!("\nWarning: {} already exists. Overwrite? [y/N]: ", self.vault_path.display());
+            io::stdout().flush()?;
+
+            let mut response = String::new();
+            io::stdin().read_line(&mut response)?;
+
+            if response.trim().to_lowercase() != "y" {
+                println!("Decryption cancelled.");
+                return Ok(());
+            }
+
+            // Create backup of existing file
+            let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
+            println!("Created backup of existing vault: {}", backup_path.display());
+        }
+
+        // Perform decryption
+        let output_path = GpgOperations::decrypt_vault(&encrypted_path, Some(&self.vault_path))?;
+        
+        success(&format!(
+            "Vault decrypted successfully: {}",
+            output_path.display()
+        ));
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
+    use tempfile::tempdir;
 
     #[test]
     fn test_interactive_vault_creation() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let vault_path = temp_file.path().to_path_buf();
+        let dir = tempdir().unwrap();
+        let vault_path = dir.path().join("test_vault.md");
 
         // Create a test vault file
         std::fs::write(&vault_path, "# root <!-- vault-cli v1 -->\n").unwrap();
 
-        // Should fail for non-existent file
-        let result = InteractiveVault::new(PathBuf::from("/non/existent/path"));
-        assert!(result.is_err());
-
-        // Should succeed for existing file
-        let result = InteractiveVault::new(vault_path);
-        assert!(result.is_ok());
+        // Create interactive vault
+        let vault = InteractiveVault::new(vault_path.clone());
+        assert!(vault.is_ok());
     }
 }

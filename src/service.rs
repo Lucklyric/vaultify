@@ -4,7 +4,6 @@ use crate::crypto::VaultCrypto;
 use crate::error::{Result, VaultError};
 use crate::models::{VaultDocument, VaultEntry};
 use crate::parser::VaultParser;
-use crate::security::SessionManager;
 use crate::utils;
 use std::path::Path;
 
@@ -223,41 +222,6 @@ impl VaultService {
             .collect()
     }
 
-    /// Get password with session support.
-    pub fn get_password_with_session(
-        &self,
-        vault_path: &Path,
-        prompt: &str,
-        allow_cache: bool,
-    ) -> Result<String> {
-        // Check for active session
-        if allow_cache {
-            if let Some(session) = SessionManager::get_session(vault_path) {
-                if let Some(ref key) = session.cached_key {
-                    return Ok(String::from_utf8(key.clone())?);
-                }
-            }
-        }
-
-        // Prompt for password with masked input
-        use dialoguer::Password;
-        let password = Password::new()
-            .with_prompt(prompt.trim_end_matches(": "))
-            .interact()
-            .map_err(|e| VaultError::Other(e.to_string()))?;
-
-        if password.is_empty() {
-            return Err(VaultError::Cancelled);
-        }
-
-        // Create new session if caching is allowed
-        if allow_cache {
-            let mut session = SessionManager::create_session(vault_path);
-            session.cached_key = Some(password.as_bytes().to_vec());
-        }
-
-        Ok(password)
-    }
 
     /// List all unique scopes in the vault.
     pub fn list_scopes(&self, doc: &VaultDocument) -> Vec<String> {
@@ -307,7 +271,6 @@ impl VaultService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_add_and_decrypt_entry() {
