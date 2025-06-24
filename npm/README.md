@@ -1,4 +1,4 @@
-# @vault-cli/vault
+# @lucklyric/vault-cli
 
 A secure command-line password manager with hierarchical organization. Pre-compiled binaries for Linux, macOS, and Windows.
 
@@ -6,13 +6,13 @@ A secure command-line password manager with hierarchical organization. Pre-compi
 
 ```bash
 # Install globally
-npm install -g @vault-cli/vault
+npm install -g @lucklyric/vault-cli
 
 # Or with yarn
-yarn global add @vault-cli/vault
+yarn global add @lucklyric/vault-cli
 
 # Or run directly with npx
-npx @vault-cli/vault
+npx @lucklyric/vault-cli
 ```
 
 The installer will automatically download the appropriate pre-built binary for your platform.

@@ -1,5 +1,5 @@
 {
-  "name": "@vault-cli/vault",
+  "name": "@lucklyric/vault-cli",
   "version": "1.0.1",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
