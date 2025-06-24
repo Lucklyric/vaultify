@@ -1,12 +1,13 @@
 //! Command-line interface implementation.
 
 use crate::error::{Result, VaultError};
+use crate::gpg::GpgOperations;
 use crate::operations::VaultOperations;
 use crate::utils::{self, success};
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::io::{self, Write};
 
 /// Secure password manager with hierarchical organization.
@@ -135,6 +136,32 @@ pub enum Commands {
         /// New scope
         new_scope: String,
     },
+
+    /// Encrypt vault file with GPG
+    GpgEncrypt {
+        /// GPG recipient for asymmetric encryption (optional)
+        #[arg(short, long)]
+        recipient: Option<String>,
+
+        /// Output ASCII armored format
+        #[arg(short, long)]
+        armor: bool,
+
+        /// Create backup before encryption
+        #[arg(short, long, default_value = "true")]
+        backup: bool,
+    },
+
+    /// Decrypt GPG-encrypted vault file
+    GpgDecrypt {
+        /// Input file (default: vault.md.gpg or vault.md.asc)
+        #[arg(short, long)]
+        input: Option<PathBuf>,
+
+        /// Output file (default: vault.md)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 impl Cli {
@@ -185,6 +212,12 @@ impl Cli {
                 old_scope,
                 new_scope,
             } => self.rename_entry(old_scope.clone(), new_scope.clone()),
+            Commands::GpgEncrypt {
+                recipient,
+                armor,
+                backup,
+            } => self.gpg_encrypt(recipient.as_deref(), *armor, *backup),
+            Commands::GpgDecrypt { input, output } => self.gpg_decrypt(input.as_deref(), output.as_deref()),
         }
     }
 
@@ -443,6 +476,66 @@ impl Cli {
         Ok(())
     }
 
+
+    /// Encrypt vault file with GPG.
+    fn gpg_encrypt(&self, recipient: Option<&str>, armor: bool, backup: bool) -> Result<()> {
+        let vault_path = self.get_vault_file()?;
+
+        // Create backup if requested
+        if backup {
+            let backup_path = GpgOperations::backup_vault(&vault_path)?;
+            println!("Created backup: {}", backup_path.display());
+        }
+
+        // Perform encryption
+        let output_path = GpgOperations::encrypt_vault(&vault_path, recipient, armor)?;
+        
+        success(&format!(
+            "Vault encrypted successfully: {}",
+            output_path.display()
+        ));
+
+        if recipient.is_some() {
+            println!("Encrypted for recipient: {}", recipient.unwrap());
+        } else {
+            println!("Encrypted with symmetric key (password-based)");
+        }
+
+        Ok(())
+    }
+
+    /// Decrypt GPG-encrypted vault file.
+    fn gpg_decrypt(&self, input: Option<&Path>, output: Option<&Path>) -> Result<()> {
+        // Determine input file
+        let encrypted_path = if let Some(path) = input {
+            path.to_path_buf()
+        } else {
+            // Try to find encrypted vault
+            let vault_path = self.get_vault_file()?;
+            let gpg_path = vault_path.with_extension("md.gpg");
+            let asc_path = vault_path.with_extension("md.asc");
+
+            if gpg_path.exists() {
+                gpg_path
+            } else if asc_path.exists() {
+                asc_path
+            } else {
+                return Err(VaultError::Other(
+                    "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+                ));
+            }
+        };
+
+        // Perform decryption
+        let output_path = GpgOperations::decrypt_vault(&encrypted_path, output)?;
+        
+        success(&format!(
+            "Vault decrypted successfully: {}",
+            output_path.display()
+        ));
+
+        Ok(())
+    }
 
     /// Get password with confirmation for new entries.
     fn get_password_with_confirmation(&self, prompt: &str) -> Result<String> {

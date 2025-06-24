@@ -1,6 +1,7 @@
 //! Interactive mode for vault operations.
 
 use crate::error::{Result, VaultError};
+use crate::gpg::GpgOperations;
 use crate::operations::VaultOperations;
 use crate::utils::{self, success, warning};
 use colored::*;
@@ -137,6 +138,8 @@ impl InteractiveVault {
                     self.rename_entry(parts[1], parts[2])
                 }
             }
+            "gpg-encrypt" => self.gpg_encrypt_interactive(),
+            "gpg-decrypt" => self.gpg_decrypt_interactive(),
             "exit" | "quit" => {
                 self.cleanup();
                 std::process::exit(0);
@@ -165,12 +168,15 @@ impl InteractiveVault {
         println!("  {} <scope>  - Edit entry", "edit".cyan());
         println!("  {} <scope> - Delete entry", "delete".cyan());
         println!("  {} <old> <new> - Rename entry", "rename".cyan());
+        println!("  {}   - Encrypt vault with GPG", "gpg-encrypt".cyan());
+        println!("  {}   - Decrypt GPG-encrypted vault", "gpg-decrypt".cyan());
         println!("  {}       - Clear screen", "clear".cyan());
         println!("  {}        - Exit interactive mode", "exit".cyan());
         println!();
         println!("{}", "Security Tips:".bold().cyan());
         println!("  • Secrets can be displayed or copied to clipboard");
         println!("  • Clipboard is auto-cleared after timeout");
+        println!("  • GPG encryption adds an extra security layer");
         println!();
     }
 
@@ -418,6 +424,136 @@ impl InteractiveVault {
     /// Cleanup on exit.
     fn cleanup(&self) {
         println!("\nGoodbye!");
+    }
+
+    /// Get password for non-new operations.
+    fn get_password(&self) -> Result<String> {
+        self.ops.get_password(&self.vault_path, "Enter vault password", true)
+    }
+
+    /// Encrypt vault file with GPG (interactive).
+    fn gpg_encrypt_interactive(&self) -> Result<()> {
+        // Ask for encryption options
+        print!("Use asymmetric encryption with GPG key? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut response = String::new();
+        io::stdin().read_line(&mut response)?;
+
+        let recipient = if response.trim().to_lowercase() == "y" {
+            // List available keys
+            match GpgOperations::list_keys() {
+                Ok(keys) if !keys.is_empty() => {
+                    println!("\nAvailable GPG keys:");
+                    for (i, key) in keys.iter().enumerate() {
+                        println!("  {}. {}", i + 1, key);
+                    }
+                    print!("\nEnter recipient email or key ID: ");
+                    io::stdout().flush()?;
+
+                    let mut recipient_input = String::new();
+                    io::stdin().read_line(&mut recipient_input)?;
+                    Some(recipient_input.trim().to_string())
+                }
+                _ => {
+                    warning("No GPG keys found. Using symmetric encryption.");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Ask for ASCII armor
+        print!("\nCreate ASCII armored output (.asc)? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut armor_response = String::new();
+        io::stdin().read_line(&mut armor_response)?;
+        let armor = armor_response.trim().to_lowercase() == "y";
+
+        // Create backup
+        let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
+        println!("Created backup: {}", backup_path.display());
+
+        // Perform encryption
+        let output_path = GpgOperations::encrypt_vault(&self.vault_path, recipient.as_deref(), armor)?;
+        
+        success(&format!(
+            "Vault encrypted successfully: {}",
+            output_path.display()
+        ));
+
+        if recipient.is_some() {
+            println!("Encrypted for recipient: {}", recipient.unwrap());
+        } else {
+            println!("Encrypted with symmetric key (password-based)");
+        }
+
+        Ok(())
+    }
+
+    /// Decrypt GPG-encrypted vault file (interactive).
+    fn gpg_decrypt_interactive(&self) -> Result<()> {
+        // Try to find encrypted vault
+        let gpg_path = self.vault_path.with_extension("md.gpg");
+        let asc_path = self.vault_path.with_extension("md.asc");
+
+        let encrypted_path = if gpg_path.exists() && asc_path.exists() {
+            // Both exist, ask which one to use
+            println!("\nFound multiple encrypted files:");
+            println!("  1. {}", gpg_path.display());
+            println!("  2. {}", asc_path.display());
+            print!("\nWhich file to decrypt? [1/2]: ");
+            io::stdout().flush()?;
+
+            let mut choice = String::new();
+            io::stdin().read_line(&mut choice)?;
+
+            if choice.trim() == "2" {
+                asc_path
+            } else {
+                gpg_path
+            }
+        } else if gpg_path.exists() {
+            gpg_path
+        } else if asc_path.exists() {
+            asc_path
+        } else {
+            return Err(VaultError::Other(
+                "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+            ));
+        };
+
+        println!("Decrypting: {}", encrypted_path.display());
+
+        // Check if vault.md already exists
+        if self.vault_path.exists() {
+            print!("\nWarning: {} already exists. Overwrite? [y/N]: ", self.vault_path.display());
+            io::stdout().flush()?;
+
+            let mut response = String::new();
+            io::stdin().read_line(&mut response)?;
+
+            if response.trim().to_lowercase() != "y" {
+                println!("Decryption cancelled.");
+                return Ok(());
+            }
+
+            // Create backup of existing file
+            let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
+            println!("Created backup of existing vault: {}", backup_path.display());
+        }
+
+        // Perform decryption
+        let output_path = GpgOperations::decrypt_vault(&encrypted_path, Some(&self.vault_path))?;
+        
+        success(&format!(
+            "Vault decrypted successfully: {}",
+            output_path.display()
+        ));
+
+        Ok(())
     }
 }
 

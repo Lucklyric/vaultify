@@ -3,6 +3,7 @@
 pub mod cli;
 pub mod crypto;
 pub mod error;
+pub mod gpg;
 pub mod interactive;
 pub mod models;
 pub mod operations;
