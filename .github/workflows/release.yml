@@ -8,138 +8,75 @@ on:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
-  build-and-upload:
-    name: Build and Upload
-    needs: create-release
+  build:
+    name: Build binaries
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          # Linux
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            binary_name: vault
-            archive_name: vault-x86_64-unknown-linux-gnu
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            binary_name: vault
-            archive_name: vault-aarch64-unknown-linux-gnu
-            
-          # macOS
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            binary_name: vault
-            archive_name: vault-x86_64-apple-darwin
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            binary_name: vault
-            archive_name: vault-aarch64-apple-darwin
-            
-          # Windows
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            binary_name: vault.exe
-            archive_name: vault-x86_64-pc-windows-msvc
-            
-    runs-on: ${{ matrix.os }}
-    
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: vault
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary: vault
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: vault
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: vault.exe
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - run: cargo build --release --target ${{ matrix.target }}
       
-      - name: Build
-        run: |
-          cd vault-cli-rust
-          cargo build --release --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-      
-      - name: Create archive
-        shell: bash
-        run: |
-          cd vault-cli-rust/target/${{ matrix.target }}/release
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            7z a ${{ matrix.archive_name }}.zip ${{ matrix.binary_name }}
-          else
-            tar czf ${{ matrix.archive_name }}.tar.gz ${{ matrix.binary_name }}
-          fi
-          
-      - name: Upload Release Asset (tar.gz)
-        if: matrix.os != 'windows-latest'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: vault-cli-rust/target/${{ matrix.target }}/release/${{ matrix.archive_name }}.tar.gz
-          asset_name: ${{ matrix.archive_name }}.tar.gz
-          asset_content_type: application/gzip
-          
-      - name: Upload Release Asset (zip)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: vault-cli-rust/target/${{ matrix.target }}/release/${{ matrix.archive_name }}.zip
-          asset_name: ${{ matrix.archive_name }}.zip
-          asset_content_type: application/zip
+          name: ${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
 
-  publish-npm:
-    name: Publish to npm
-    needs: build-and-upload
+  release:
+    name: Create release and publish to npm
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+      
+      - name: Create archives
+        run: |
+          cd binaries
+          tar czf vault-linux-x64.tar.gz -C x86_64-unknown-linux-gnu vault
+          tar czf vault-macos-x64.tar.gz -C x86_64-apple-darwin vault
+          tar czf vault-macos-arm64.tar.gz -C aarch64-apple-darwin vault
+          zip vault-windows-x64.zip -j x86_64-pc-windows-msvc/vault.exe
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: binaries/*.{tar.gz,zip}
+      
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
       
-      - name: Prepare npm package
-        run: |
-          cd npm
-          # Update version in package.json to match tag
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          npm version $TAG_VERSION --no-git-tag-version
-          
       - name: Publish to npm
         run: |
           cd npm
+          VERSION=${GITHUB_REF#refs/tags/v}
+          npm version $VERSION --no-git-tag-version
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

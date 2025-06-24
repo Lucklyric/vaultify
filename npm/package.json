@@ -1,6 +1,6 @@
 {
   "name": "@vault-cli/vault",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
   "bin": {
@@ -47,7 +47,7 @@
     "arm64"
   ],
   "dependencies": {
-    "node-fetch": "^2.6.7",
+    "adm-zip": "^0.5.10",
     "tar": "^6.1.11"
   }
 }
