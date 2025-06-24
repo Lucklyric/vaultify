@@ -94,7 +94,7 @@ impl VaultOperations {
         password: &str,
     ) -> Result<()> {
         let mut doc = self.service.load_vault(vault_path)?;
-        
+
         self.service.add_entry(
             &mut doc,
             scope.to_string(),
@@ -102,7 +102,7 @@ impl VaultOperations {
             secret.to_string(),
             password,
         )?;
-        
+
         self.service.save_vault(&doc, vault_path)?;
         Ok(())
     }
@@ -188,15 +188,20 @@ impl VaultOperations {
 
         self.service
             .rename_entry(&mut doc, &old_parts, new_scope.to_string())?;
-        
+
         self.service.save_vault(&doc, vault_path)?;
         Ok(())
     }
 
     /// Get password (always prompts).
-    pub fn get_password(&self, _vault_path: &Path, prompt: &str, _allow_cache: bool) -> Result<String> {
+    pub fn get_password(
+        &self,
+        _vault_path: &Path,
+        prompt: &str,
+        _allow_cache: bool,
+    ) -> Result<String> {
         use dialoguer::Password;
-        
+
         let password = Password::new()
             .with_prompt(prompt)
             .interact()
@@ -251,7 +256,10 @@ impl VaultOperations {
 
             if display_response.trim().to_lowercase() == "y" {
                 // Display plaintext
-                println!("\n{} Sensitive data displayed below:", "⚠️ Warning:".yellow().bold());
+                println!(
+                    "\n{} Sensitive data displayed below:",
+                    "⚠️ Warning:".yellow().bold()
+                );
                 println!("{}", "=".repeat(50));
                 println!("{}", plaintext);
                 println!("{}", "=".repeat(50));

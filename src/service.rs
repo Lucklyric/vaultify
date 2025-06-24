@@ -222,7 +222,6 @@ impl VaultService {
             .collect()
     }
 
-
     /// List all unique scopes in the vault.
     pub fn list_scopes(&self, doc: &VaultDocument) -> Vec<String> {
         let mut scopes: Vec<String> = doc.entries.iter().map(|e| e.scope_string()).collect();

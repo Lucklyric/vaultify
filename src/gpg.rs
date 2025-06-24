@@ -45,12 +45,10 @@ impl GpgOperations {
 
         // Build GPG command
         let mut cmd = Command::new("gpg");
-        
+
         // Always use symmetric encryption if no recipient
         if let Some(recipient) = recipient {
-            cmd.arg("--encrypt")
-                .arg("--recipient")
-                .arg(recipient);
+            cmd.arg("--encrypt").arg("--recipient").arg(recipient);
         } else {
             cmd.arg("--symmetric");
         }
@@ -59,15 +57,15 @@ impl GpgOperations {
             cmd.arg("--armor");
         }
 
-        cmd.arg("--output")
-            .arg(&output_path)
-            .arg(vault_path);
+        cmd.arg("--output").arg(&output_path).arg(vault_path);
 
         // Execute encryption interactively
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| VaultError::Other(format!("Failed to run GPG: {}", e)))?;
 
-        let status = child.wait()
+        let status = child
+            .wait()
             .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {}", e)))?;
 
         if !status.success() {
@@ -91,7 +89,8 @@ impl GpgOperations {
             path.to_path_buf()
         } else {
             // Remove .gpg or .asc extension
-            let stem = encrypted_path.file_stem()
+            let stem = encrypted_path
+                .file_stem()
                 .ok_or_else(|| VaultError::Other("Invalid encrypted file name".to_string()))?;
             encrypted_path.with_file_name(stem)
         };
@@ -112,10 +111,12 @@ impl GpgOperations {
             .arg(encrypted_path);
 
         // Execute decryption interactively
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| VaultError::Other(format!("Failed to run GPG: {}", e)))?;
 
-        let status = child.wait()
+        let status = child
+            .wait()
             .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {}", e)))?;
 
         if !status.success() {
@@ -166,7 +167,7 @@ impl GpgOperations {
     /// Create a backup of the vault file before GPG operations.
     pub fn backup_vault(vault_path: &Path) -> Result<PathBuf> {
         let backup_path = vault_path.with_extension("md.backup");
-        
+
         fs::copy(vault_path, &backup_path)
             .map_err(|e| VaultError::Other(format!("Failed to create backup: {}", e)))?;
 

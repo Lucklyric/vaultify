@@ -163,7 +163,10 @@ impl InteractiveVault {
         println!("\n{}", "Available Commands:".bold());
         println!("  {}        - Show this help", "help".cyan());
         println!("  {} <scope>  - Add new entry", "add".cyan());
-        println!("  {} [filter] - List entries (filter searches scope & description)", "list".cyan());
+        println!(
+            "  {} [filter] - List entries (filter searches scope & description)",
+            "list".cyan()
+        );
         println!("  {} <scope> - Decrypt entry", "decrypt".cyan());
         println!("  {} <scope>  - Edit entry", "edit".cyan());
         println!("  {} <scope> - Delete entry", "delete".cyan());
@@ -193,7 +196,12 @@ impl InteractiveVault {
                 println!();
                 for entry in &result.entries {
                     if !entry.has_content {
-                        println!("  {} {} - {}", entry.scope.cyan(), "[empty]".yellow(), entry.description);
+                        println!(
+                            "  {} {} - {}",
+                            entry.scope.cyan(),
+                            "[empty]".yellow(),
+                            entry.description
+                        );
                     } else {
                         println!("  {} - {}", entry.scope.cyan(), entry.description);
                     }
@@ -206,10 +214,7 @@ impl InteractiveVault {
 
                 for line in tree_lines {
                     // Find if this line represents an entry
-                    if let Some(entry) = result.entries
-                        .iter()
-                        .find(|e| line.contains(&e.scope)) {
-                        
+                    if let Some(entry) = result.entries.iter().find(|e| line.contains(&e.scope)) {
                         if !entry.has_content {
                             println!("  {} {} - {}", line, "[empty]".yellow(), entry.description);
                         } else {
@@ -247,7 +252,8 @@ impl InteractiveVault {
         let secret = crate::secure_temp::get_secret_from_editor(None)?;
 
         // Add entry
-        self.ops.add_entry(&self.vault_path, scope, &description, &secret, &password)?;
+        self.ops
+            .add_entry(&self.vault_path, scope, &description, &secret, &password)?;
         success(&format!("Added: {}", scope));
 
         Ok(())
@@ -256,7 +262,9 @@ impl InteractiveVault {
     /// Decrypt and display entry.
     async fn decrypt_entry(&mut self, scope: &str) -> Result<()> {
         // Get password
-        let password = self.ops.get_password(&self.vault_path, "Enter vault password", true)?;
+        let password = self
+            .ops
+            .get_password(&self.vault_path, "Enter vault password", true)?;
 
         // Decrypt
         let result = self.ops.decrypt_entry(&self.vault_path, scope, &password)?;
@@ -275,7 +283,10 @@ impl InteractiveVault {
 
         if display_response.trim().to_lowercase() == "y" {
             // Display plaintext
-            println!("\n{} Sensitive data displayed below:", "⚠️ Warning:".yellow().bold());
+            println!(
+                "\n{} Sensitive data displayed below:",
+                "⚠️ Warning:".yellow().bold()
+            );
             println!("{}", "=".repeat(50));
             println!("{}", result.plaintext);
             println!("{}", "=".repeat(50));
@@ -322,7 +333,9 @@ impl InteractiveVault {
     /// Edit an existing entry.
     async fn edit_entry(&mut self, scope: &str) -> Result<()> {
         // Get password
-        let password = self.ops.get_password(&self.vault_path, "Enter vault password", true)?;
+        let password = self
+            .ops
+            .get_password(&self.vault_path, "Enter vault password", true)?;
 
         println!("Editing: {} (press Enter to keep current value)", scope);
 
@@ -352,7 +365,13 @@ impl InteractiveVault {
         };
 
         // Update entry
-        self.ops.edit_entry(&self.vault_path, scope, new_secret.as_deref(), new_description, &password)?;
+        self.ops.edit_entry(
+            &self.vault_path,
+            scope,
+            new_secret.as_deref(),
+            new_description,
+            &password,
+        )?;
         success(&format!("Updated: {}", scope));
 
         Ok(())
@@ -380,11 +399,11 @@ impl InteractiveVault {
 
     /// Rename an entry.
     fn rename_entry(&mut self, old_scope: &str, new_scope: &str) -> Result<()> {
-        self.ops.rename_entry(&self.vault_path, old_scope, new_scope)?;
+        self.ops
+            .rename_entry(&self.vault_path, old_scope, new_scope)?;
         success(&format!("Renamed: {} -> {}", old_scope, new_scope));
         Ok(())
     }
-
 
     /// Get password with confirmation for new entries.
     fn get_password_with_confirmation(&self) -> Result<String> {
@@ -472,8 +491,9 @@ impl InteractiveVault {
         println!("Created backup: {}", backup_path.display());
 
         // Perform encryption
-        let output_path = GpgOperations::encrypt_vault(&self.vault_path, recipient.as_deref(), armor)?;
-        
+        let output_path =
+            GpgOperations::encrypt_vault(&self.vault_path, recipient.as_deref(), armor)?;
+
         success(&format!(
             "Vault encrypted successfully: {}",
             output_path.display()
@@ -516,7 +536,7 @@ impl InteractiveVault {
             asc_path
         } else {
             return Err(VaultError::Other(
-                "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+                "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string(),
             ));
         };
 
@@ -524,7 +544,10 @@ impl InteractiveVault {
 
         // Check if vault.md already exists
         if self.vault_path.exists() {
-            print!("\nWarning: {} already exists. Overwrite? [y/N]: ", self.vault_path.display());
+            print!(
+                "\nWarning: {} already exists. Overwrite? [y/N]: ",
+                self.vault_path.display()
+            );
             io::stdout().flush()?;
 
             let mut response = String::new();
@@ -537,12 +560,15 @@ impl InteractiveVault {
 
             // Create backup of existing file
             let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
-            println!("Created backup of existing vault: {}", backup_path.display());
+            println!(
+                "Created backup of existing vault: {}",
+                backup_path.display()
+            );
         }
 
         // Perform decryption
         let output_path = GpgOperations::decrypt_vault(&encrypted_path, Some(&self.vault_path))?;
-        
+
         success(&format!(
             "Vault decrypted successfully: {}",
             output_path.display()

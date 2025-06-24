@@ -168,7 +168,6 @@ impl VaultDocument {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +213,4 @@ mod tests {
         assert!(!child.is_parent_of(&parent));
         assert!(!parent.is_child_of(&child));
     }
-
 }
