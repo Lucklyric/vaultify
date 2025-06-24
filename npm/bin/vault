@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+const { spawn } = require('child_process');
+const path = require('path');
+
+const binary = process.platform === 'win32' ? 'vault.exe' : 'vault';
+const binaryPath = path.join(__dirname, binary);
+
+const child = spawn(binaryPath, process.argv.slice(2), {
+  stdio: 'inherit',
+});
+
+child.on('exit', (code) => {
+  process.exit(code);
+});

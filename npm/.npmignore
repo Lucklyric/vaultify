@@ -1,25 +1,11 @@
-# Source files (not needed for npm package)
-src/
-target/
-Cargo.toml
-Cargo.lock
+# Exclude everything by default
+*
+*/
 
-# Development files
-.github/
-.gitignore
-CONTRIBUTING.md
-CHANGELOG.md
-
-# Test files
-tests/
-*.test.js
-test-*
-
-# Build artifacts
-*.log
-.DS_Store
-*.swp
-*.swo
-
-# Only the npm directory contents should be published
-# along with the pre-built binaries
+# Only include these files for npm package
+!package.json
+!README.md
+!install.js
+!index.js
+!bin/
+!bin/vault
