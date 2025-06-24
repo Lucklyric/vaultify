@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Represents a single entry in the vault.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -169,64 +168,6 @@ impl VaultDocument {
     }
 }
 
-/// Represents a vault session with cached password.
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct Session {
-    /// Path to the vault file
-    #[zeroize(skip)]
-    pub vault_path: PathBuf,
-    /// Cached password key
-    pub cached_key: Option<Vec<u8>>,
-    /// Creation timestamp
-    #[zeroize(skip)]
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// Last activity timestamp
-    #[zeroize(skip)]
-    pub last_activity: chrono::DateTime<chrono::Utc>,
-    /// Timeout in minutes
-    #[zeroize(skip)]
-    pub timeout_minutes: u32,
-}
-
-impl Session {
-    /// Create a new session.
-    pub fn new(vault_path: PathBuf, timeout_minutes: u32) -> Self {
-        let now = chrono::Utc::now();
-        Self {
-            vault_path,
-            cached_key: None,
-            created_at: now,
-            last_activity: now,
-            timeout_minutes,
-        }
-    }
-
-    /// Update last activity timestamp.
-    pub fn update_activity(&mut self) {
-        self.last_activity = chrono::Utc::now();
-    }
-
-    /// Check if session has expired.
-    pub fn is_expired(&self) -> bool {
-        let elapsed = chrono::Utc::now() - self.last_activity;
-        elapsed.num_seconds() > (self.timeout_minutes as i64 * 60)
-    }
-
-    /// Get remaining seconds before expiry.
-    pub fn remaining_seconds(&self) -> i64 {
-        let elapsed = chrono::Utc::now() - self.last_activity;
-        let timeout_seconds = self.timeout_minutes as i64 * 60;
-        (timeout_seconds - elapsed.num_seconds()).max(0)
-    }
-
-    /// Clear cached password.
-    pub fn clear(&mut self) {
-        if let Some(ref mut key) = self.cached_key {
-            key.zeroize();
-        }
-        self.cached_key = None;
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -274,13 +215,4 @@ mod tests {
         assert!(!parent.is_child_of(&child));
     }
 
-    #[test]
-    fn test_session_expiry() {
-        let mut session = Session::new(PathBuf::from("test.md"), 5);
-        assert!(!session.is_expired());
-
-        // Manually set last_activity to past
-        session.last_activity = chrono::Utc::now() - chrono::Duration::minutes(6);
-        assert!(session.is_expired());
-    }
 }

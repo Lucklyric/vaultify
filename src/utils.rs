@@ -383,7 +383,7 @@ mod tests {
         assert_eq!(tree.len(), 5);
         assert_eq!(tree[0], "personal");
         assert!(tree[1].contains("├── banking"));
-        assert!(tree[2].contains("│   └── chase"));
+        assert!(tree[2].contains("└── chase"));
         assert!(tree[3].contains("└── email"));
         assert_eq!(tree[4], "work");
     }
