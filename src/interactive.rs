@@ -426,11 +426,6 @@ impl InteractiveVault {
         println!("\nGoodbye!");
     }
 
-    /// Get password for non-new operations.
-    fn get_password(&self) -> Result<String> {
-        self.ops.get_password(&self.vault_path, "Enter vault password", true)
-    }
-
     /// Encrypt vault file with GPG (interactive).
     fn gpg_encrypt_interactive(&self) -> Result<()> {
         // Ask for encryption options

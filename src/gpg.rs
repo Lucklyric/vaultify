@@ -130,7 +130,7 @@ impl GpgOperations {
         Self::check_gpg_available()?;
 
         let output = Command::new("gpg")
-            .args(&["--list-keys", "--with-colons"])
+            .args(["--list-keys", "--with-colons"])
             .output()
             .map_err(|e| VaultError::Other(format!("Failed to list GPG keys: {}", e)))?;
 
@@ -177,7 +177,6 @@ impl GpgOperations {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_is_gpg_file() {

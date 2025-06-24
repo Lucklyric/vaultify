@@ -34,6 +34,12 @@ pub struct VaultOperations {
     service: VaultService,
 }
 
+impl Default for VaultOperations {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VaultOperations {
     /// Create a new operations instance.
     pub fn new() -> Self {
