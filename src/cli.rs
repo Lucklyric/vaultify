@@ -1,16 +1,14 @@
 //! Command-line interface implementation.
 
-use crate::crypto::VaultCrypto;
 use crate::error::{Result, VaultError};
-use crate::models::VaultEntry;
-use crate::parser::VaultParser;
-use crate::security::{ClipboardManager, SessionManager};
-use crate::utils::{self, success, warning};
+use crate::gpg::GpgOperations;
+use crate::operations::VaultOperations;
+use crate::utils::{self, success};
 use clap::{Parser, Subcommand};
 use colored::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use zeroize::Zeroize;
+use std::io::{self, Write};
 
 /// Secure password manager with hierarchical organization.
 #[derive(Parser, Debug)]
@@ -80,7 +78,7 @@ pub enum Commands {
         #[arg(short, long)]
         tree: bool,
 
-        /// Filter by scope prefix
+        /// Filter entries (searches in both scope and description)
         scope: Option<String>,
     },
 
@@ -101,30 +99,69 @@ pub enum Commands {
         #[arg(short = 'n', long = "no-display")]
         no_display: bool,
 
-        /// Copy to clipboard for N seconds (default: 10)
-        #[arg(short = 't', long, default_value = "10")]
+        /// Copy to clipboard for N seconds (default: 60)
+        #[arg(short = 't', long, default_value = "60")]
         timeout: u64,
     },
 
-    /// Search for entries
-    Search {
-        /// Search query
-        query: String,
+    /// Edit an existing entry
+    Edit {
+        /// Secret scope
+        scope: String,
 
-        /// Search in descriptions
+        /// New description
         #[arg(short, long)]
-        description: bool,
+        description: Option<String>,
 
-        /// Case sensitive search
-        #[arg(short = 'c', long)]
-        case_sensitive: bool,
+        /// Use an external editor for secret input
+        #[arg(short, long)]
+        editor: bool,
     },
 
-    /// Lock the vault session
-    Lock,
+    /// Delete an entry
+    Delete {
+        /// Secret scope
+        scope: String,
 
-    /// Show session status
-    Status,
+        /// Force deletion without confirmation
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Rename an entry
+    Rename {
+        /// Current scope
+        old_scope: String,
+
+        /// New scope
+        new_scope: String,
+    },
+
+    /// Encrypt vault file with GPG
+    GpgEncrypt {
+        /// GPG recipient for asymmetric encryption (optional)
+        #[arg(short, long)]
+        recipient: Option<String>,
+
+        /// Output ASCII armored format
+        #[arg(short, long)]
+        armor: bool,
+
+        /// Create backup before encryption
+        #[arg(short, long, default_value = "true")]
+        backup: bool,
+    },
+
+    /// Decrypt GPG-encrypted vault file
+    GpgDecrypt {
+        /// Input file (default: vault.md.gpg or vault.md.asc)
+        #[arg(short, long)]
+        input: Option<PathBuf>,
+
+        /// Output file (default: vault.md)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 impl Cli {
@@ -165,13 +202,22 @@ impl Cli {
                 self.decrypt_secret(scope.clone(), *clipboard, *show, *no_display, *timeout)
                     .await
             }
-            Commands::Search {
-                query,
+            Commands::Edit {
+                scope,
                 description,
-                case_sensitive,
-            } => self.search_entries(query.clone(), *description, *case_sensitive),
-            Commands::Lock => self.lock_vault(),
-            Commands::Status => self.show_status(),
+                editor,
+            } => self.edit_entry(scope.clone(), description.clone(), *editor).await,
+            Commands::Delete { scope, force } => self.delete_entry(scope.clone(), *force),
+            Commands::Rename {
+                old_scope,
+                new_scope,
+            } => self.rename_entry(old_scope.clone(), new_scope.clone()),
+            Commands::GpgEncrypt {
+                recipient,
+                armor,
+                backup,
+            } => self.gpg_encrypt(recipient.as_deref(), *armor, *backup),
+            Commands::GpgDecrypt { input, output } => self.gpg_decrypt(input.as_deref(), output.as_deref()),
         }
     }
 
@@ -193,34 +239,29 @@ impl Cli {
 
         // Create vault directory if needed
         if let Some(parent) = vault_path.parent() {
-            fs::create_dir_all(parent)?;
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
         }
 
-        // Create new vault file
-        let content = VaultParser::create_root_document();
+        // Create vault file
+        let content = "# root <!-- vault-cli v1 -->\n";
         fs::write(&vault_path, content)?;
 
-        // Set secure permissions
+        // Set proper permissions on Unix
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(&vault_path)?.permissions();
-            perms.set_mode(0o600); // Read/write for owner only
+            perms.set_mode(0o600);
             fs::set_permissions(&vault_path, perms)?;
         }
 
         success(&format!("Vault initialized at {}", vault_path.display()));
-
-        // Check permissions and show warnings
-        let warnings = utils::check_file_permissions(&vault_path);
-        for warn in warnings {
-            warning(&warn);
-        }
-
         Ok(())
     }
 
-    /// Add a new secret to the vault.
+    /// Add a new secret.
     async fn add_secret(
         &self,
         scope: String,
@@ -228,161 +269,101 @@ impl Cli {
         stdin: bool,
         editor: bool,
     ) -> Result<()> {
-        // Validate scope
-        if !utils::validate_scope_name(&scope) {
-            return Err(VaultError::InvalidScope(scope));
-        }
-
-        // Get vault file
         let vault_path = self.get_vault_file()?;
+        let ops = VaultOperations::new();
 
-        // Parse vault
-        let parser = VaultParser::new();
-        let mut doc = parser.parse_file(&vault_path)?;
+        // Get description
+        let description = if let Some(desc) = description {
+            desc
+        } else {
+            print!("Description: ");
+            io::stdout().flush()?;
+            let mut desc = String::new();
+            io::stdin().read_line(&mut desc)?;
+            desc.trim().to_string()
+        };
 
-        // Check if entry already exists
-        let scope_parts = utils::parse_scope_path(&scope);
-        if doc.find_entry(&scope_parts).is_some() {
-            return Err(VaultError::EntryExists(scope));
-        }
+        // Get secret
+        let secret = if stdin {
+            let mut secret = String::new();
+            io::stdin().read_line(&mut secret)?;
+            secret.trim().to_string()
+        } else if editor {
+            self.get_secret_from_editor()?
+        } else {
+            self.get_secret_interactively()?
+        };
 
-        // Get password with confirmation for new entries
+        // Get password
         let password = self.get_password_with_confirmation("Enter password for this secret")?;
 
-        // Get secret content
-        let secret = if stdin {
-            // Read from stdin
-            use std::io::{self, Read};
-            let mut buffer = String::new();
-            io::stdin().read_to_string(&mut buffer)?;
-            buffer.trim().to_string()
-        } else if editor {
-            // Use external editor
-            let template = format!(
-                "# Enter secret for: {}\n# Lines starting with # will be ignored\n\n",
-                scope
-            );
-            let content = utils::launch_editor(&template)?;
-            // Remove comment lines
-            content
-                .lines()
-                .filter(|line| !line.trim_start().starts_with('#'))
-                .collect::<Vec<_>>()
-                .join("\n")
-        } else {
-            // Default to editor for security (unless stdin is specified)
-            let template = format!(
-                "# Enter secret for: {}\n# Lines starting with # will be ignored\n# Save and close the editor when done\n\n",
-                scope
-            );
-            let content = utils::launch_editor(&template)?;
-            // Remove comment lines
-            content
-                .lines()
-                .filter(|line| !line.trim_start().starts_with('#'))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        // Add entry
+        ops.add_entry(&vault_path, &scope, &description, &secret, &password)?;
 
-        if secret.is_empty() {
-            return Err(VaultError::NoSecret);
-        }
-
-        // Encrypt the secret
-        let crypto = VaultCrypto::new();
-        let (encrypted_content, salt) = crypto.encrypt(&secret, &password)?;
-
-        // Create new entry
-        let entry = VaultEntry {
-            scope_path: scope_parts.clone(),
-            heading_level: scope_parts.len() as u8,
-            description: description.unwrap_or_else(|| format!("{} credentials", scope)),
-            encrypted_content,
-            salt: Some(salt),
-            start_line: 0,
-            end_line: 0,
-        };
-
-        // Add entry to document
-        doc.add_entry(entry)
-            .map_err(|e| VaultError::Other(e.to_string()))?;
-
-        // Save document
-        doc.save(&vault_path)?;
-
-        success(&format!("Added secret: {}", scope));
-
-        // Update session
-        SessionManager::update_activity(&vault_path);
-
+        success(&format!("Added: {}", scope));
         Ok(())
     }
 
     /// List vault entries.
     fn list_entries(&self, tree: bool, scope_filter: Option<String>) -> Result<()> {
         let vault_path = self.get_vault_file()?;
-        let parser = VaultParser::new();
-        let doc = parser.parse_file(&vault_path)?;
+        let ops = VaultOperations::new();
+        let result = ops.list_entries(&vault_path, scope_filter.as_deref())?;
 
-        // Get all scopes with their encryption status
-        let mut scopes_with_status: Vec<(String, bool)> = doc
-            .entries
-            .iter()
-            .map(|e| (e.scope_string(), !e.encrypted_content.trim().is_empty()))
-            .collect();
-
-        // Apply filter if provided
-        if let Some(filter) = scope_filter {
-            let filter_parts = utils::parse_scope_path(&filter);
-            scopes_with_status.retain(|(s, _)| {
-                let parts = utils::parse_scope_path(s);
-                parts.len() >= filter_parts.len() && parts[..filter_parts.len()] == filter_parts[..]
-            });
-        }
-
-        // Sort for consistent output
-        scopes_with_status.sort_by(|a, b| a.0.cmp(&b.0));
-
-        if scopes_with_status.is_empty() {
+        if result.entries.is_empty() {
             println!("No entries found");
             return Ok(());
         }
 
-        if tree {
-            // Display as tree - extract just the scopes for now
-            let scopes: Vec<String> = scopes_with_status.iter().map(|(s, _)| s.clone()).collect();
-            let tree_lines = utils::format_tree(&scopes);
-            for line in tree_lines.iter() {
-                // Find the corresponding status
-                let is_empty = scopes_with_status
-                    .iter()
-                    .any(|(scope, has_content)| line.contains(scope) && !*has_content);
+        // When filtering, always show full paths for clarity
+        let use_tree = tree && scope_filter.is_none();
 
-                if is_empty {
-                    println!("{} {}", line, "[empty]".yellow());
+        if use_tree {
+            // Display as tree with descriptions
+            let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
+            let tree_lines = utils::format_tree(&scopes);
+            
+            for line in tree_lines.iter() {
+                // Find the corresponding entry
+                if let Some(entry) = result.entries
+                    .iter()
+                    .find(|e| line.contains(&e.scope)) {
+                    
+                    if !entry.has_content {
+                        println!("{} {} - {}", line, "[empty]".yellow(), entry.description);
+                    } else {
+                        println!("{} - {}", line, entry.description);
+                    }
                 } else {
                     println!("{}", line);
                 }
             }
         } else {
-            // Display as list
+            // Display as list with full paths
             match self.output {
                 OutputFormat::Text => {
-                    for (scope, has_content) in scopes_with_status {
-                        if has_content {
-                            println!("{}", scope);
+                    // If filtering, show a header
+                    if let Some(ref filter) = scope_filter {
+                        println!("Entries matching '{}':", filter);
+                        println!();
+                    }
+                    
+                    for entry in &result.entries {
+                        if entry.has_content {
+                            println!("{} - {}", entry.scope.cyan(), entry.description);
                         } else {
-                            println!("{} {}", scope, "[empty]".yellow());
+                            println!("{} {} - {}", entry.scope.cyan(), "[empty]".yellow(), entry.description);
                         }
                     }
                 }
                 OutputFormat::Json => {
-                    let entries: Vec<serde_json::Value> = scopes_with_status
+                    let entries: Vec<serde_json::Value> = result.entries
                         .into_iter()
-                        .map(|(scope, has_content)| {
+                        .map(|entry| {
                             serde_json::json!({
-                                "scope": scope,
-                                "has_content": has_content
+                                "scope": entry.scope,
+                                "has_content": entry.has_content,
+                                "description": entry.description
                             })
                         })
                         .collect();
@@ -407,272 +388,156 @@ impl Cli {
         timeout: u64,
     ) -> Result<()> {
         let vault_path = self.get_vault_file()?;
-
-        // Parse vault
-        let parser = VaultParser::new();
-        let doc = parser.parse_file(&vault_path)?;
-
-        // Find entry
-        let scope_parts = utils::parse_scope_path(&scope);
-        let entry = doc
-            .find_entry(&scope_parts)
-            .ok_or_else(|| VaultError::EntryNotFound(scope.clone()))?;
-
-        // Check if entry has encrypted content
-        if entry.encrypted_content.is_empty() {
-            return Err(VaultError::NoEncryptedContent(scope));
-        }
-
-        // Check if entry has salt
-        let salt = entry
-            .salt
-            .as_ref()
-            .ok_or_else(|| VaultError::NoSalt(scope.clone()))?;
+        let ops = VaultOperations::new();
 
         // Get password
-        let password = self.get_password(&vault_path, true)?;
+        let password = ops.get_password(&vault_path, "Enter vault password", true)?;
 
-        // Decrypt
-        let crypto = VaultCrypto::new();
-        let mut plaintext = crypto
-            .decrypt(&entry.encrypted_content, &password, salt)
-            .map_err(|_| VaultError::DecryptionFailed)?;
+        // Decrypt entry
+        let result = ops.decrypt_entry(&vault_path, &scope, &password)?;
 
-        // Update session activity
-        SessionManager::update_activity(&vault_path);
-
-        // Handle output
-        if no_display {
-            // Direct to clipboard without showing
-            ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
-            success(&format!(
-                "Copied to clipboard (will clear in {} seconds)",
-                timeout
-            ));
-            success("Secret was not displayed on screen for security");
-            plaintext.zeroize();
-        } else if clipboard {
-            ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
-            success(&format!(
-                "Copied to clipboard (will clear in {} seconds)",
-                timeout
-            ));
-        } else if show {
-            // Warning before showing
-            println!(
-                "\n{} Sensitive data will be displayed on screen",
-                "⚠️ Warning:".yellow().bold()
-            );
-            println!("Press Enter to continue or Ctrl+C to cancel...");
-            let mut _wait = String::new();
-            io::stdin().read_line(&mut _wait)?;
-
-            println!("{}", "=".repeat(40));
-            println!("{}: {}", "Scope".bold(), scope);
-            println!("{}: {}", "Description".bold(), entry.description);
-            println!("{}", "=".repeat(40));
-            println!("{}", plaintext);
-            println!("{}", "=".repeat(40));
-
-            // Ask if user wants to copy to clipboard
-            println!();
-            print!("Copy to clipboard? [y/N]: ");
-            use std::io::{self, Write};
-            io::stdout().flush()?;
-
-            let mut response = String::new();
-            io::stdin().read_line(&mut response)?;
-
-            if response.trim().to_lowercase() == "y" {
-                ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
-                success(&format!(
-                    "Copied to clipboard (will clear in {} seconds)",
-                    timeout
-                ));
-            }
-
-            // Ask to clear screen
-            println!();
-            print!("Clear screen? [Y/n]: ");
-            io::stdout().flush()?;
-
-            let mut clear_response = String::new();
-            io::stdin().read_line(&mut clear_response)?;
-
-            if clear_response.trim().to_lowercase() != "n" {
-                // Clear screen
-                utils::clear_screen();
-                success("Screen cleared");
-            }
-
-            // Clear sensitive data from memory
-            plaintext.zeroize();
-        } else {
-            // Default: show masked preview and options
-            let preview = if plaintext.len() > 20 {
-                format!("{}...", &plaintext[..20])
-            } else {
-                plaintext.clone()
-            };
-
-            println!("\n{}", "=".repeat(40));
-            println!("{}: {}", "Scope".bold(), scope);
-            println!("{}: {}", "Description".bold(), entry.description);
-            println!("{}: {}", "Preview".bold(), preview);
-            println!("{}", "=".repeat(40));
-
-            // Ask what to do
-            println!("\nWhat would you like to do?");
-            println!("  1) Copy to clipboard (secure)");
-            println!("  2) Display in terminal");
-            println!("  3) Cancel");
-            print!("\nChoice [1-3]: ");
-            use std::io::{self, Write};
-            io::stdout().flush()?;
-
-            let mut choice = String::new();
-            io::stdin().read_line(&mut choice)?;
-
-            match choice.trim() {
-                "1" => {
-                    ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
-                    success(&format!(
-                        "Copied to clipboard (will clear in {} seconds)",
-                        timeout
-                    ));
-                }
-                "2" => {
-                    println!("\n{}", "=".repeat(40));
-                    println!("{}", plaintext);
-                    println!("{}", "=".repeat(40));
-
-                    // Ask to clear screen
-                    println!();
-                    print!("Clear screen? [Y/n]: ");
-                    io::stdout().flush()?;
-
-                    let mut clear_response = String::new();
-                    io::stdin().read_line(&mut clear_response)?;
-
-                    if clear_response.trim().to_lowercase() != "n" {
-                        utils::clear_screen();
-                        success("Screen cleared");
-                    }
-                }
-                _ => {
-                    println!("Cancelled");
-                }
-            }
-        }
-
-        // Clear sensitive data
-        plaintext.zeroize();
+        // Handle display
+        ops.handle_decrypt_display(result, show, clipboard, no_display, timeout)
+            .await?;
 
         Ok(())
     }
 
-    /// Search for entries.
-    fn search_entries(
+    /// Edit an existing entry.
+    async fn edit_entry(
         &self,
-        query: String,
-        in_description: bool,
-        case_sensitive: bool,
+        scope: String,
+        description: Option<String>,
+        editor: bool,
     ) -> Result<()> {
         let vault_path = self.get_vault_file()?;
-        let parser = VaultParser::new();
-        let doc = parser.parse_file(&vault_path)?;
+        let ops = VaultOperations::new();
 
-        let query_lower = if case_sensitive {
-            query.clone()
+        // Get password
+        let password = ops.get_password(&vault_path, "Enter vault password", true)?;
+
+        // Get new secret if editing
+        let new_secret = if editor {
+            Some(self.get_secret_from_editor()?)
         } else {
-            query.to_lowercase()
+            print!("Enter new secret (or press Enter to keep current): ");
+            io::stdout().flush()?;
+            let mut secret = String::new();
+            io::stdin().read_line(&mut secret)?;
+            let secret = secret.trim();
+            if secret.is_empty() {
+                None
+            } else {
+                Some(secret.to_string())
+            }
         };
 
-        let mut matches = Vec::new();
+        // Edit entry
+        ops.edit_entry(&vault_path, &scope, new_secret.as_deref(), description.as_deref(), &password)?;
 
-        for entry in &doc.entries {
-            let scope = entry.scope_string();
-            let scope_check = if case_sensitive {
-                scope.clone()
-            } else {
-                scope.to_lowercase()
-            };
-
-            let description_check = if case_sensitive {
-                entry.description.clone()
-            } else {
-                entry.description.to_lowercase()
-            };
-
-            let found = if in_description {
-                description_check.contains(&query_lower)
-            } else {
-                scope_check.contains(&query_lower)
-            };
-
-            if found {
-                matches.push((scope, entry.description.clone()));
-            }
-        }
-
-        if matches.is_empty() {
-            println!("No matches found for '{}'", query);
-        } else {
-            match self.output {
-                OutputFormat::Text => {
-                    println!("Found {} matches:", matches.len());
-                    for (scope, desc) in matches {
-                        println!("  {} - {}", scope.cyan(), desc);
-                    }
-                }
-                OutputFormat::Json => {
-                    let json: Vec<_> = matches
-                        .into_iter()
-                        .map(|(scope, description)| {
-                            serde_json::json!({
-                                "scope": scope,
-                                "description": description
-                            })
-                        })
-                        .collect();
-                    println!("{}", serde_json::to_string_pretty(&json).unwrap());
-                }
-            }
-        }
-
+        success(&format!("Updated: {}", scope));
         Ok(())
     }
 
-    /// Lock the vault session.
-    fn lock_vault(&self) -> Result<()> {
-        if let Ok(vault_path) = self.get_vault_file() {
-            SessionManager::clear_session(&vault_path);
-            success("Vault session locked");
-        } else {
-            SessionManager::clear_all_sessions();
-            success("All vault sessions locked");
+    /// Delete an entry.
+    fn delete_entry(&self, scope: String, force: bool) -> Result<()> {
+        let vault_path = self.get_vault_file()?;
+        let ops = VaultOperations::new();
+
+        // Confirm deletion
+        if !force {
+            print!("Delete '{}'? [y/N]: ", scope);
+            io::stdout().flush()?;
+            let mut confirm = String::new();
+            io::stdin().read_line(&mut confirm)?;
+
+            if confirm.trim().to_lowercase() != "y" {
+                println!("Cancelled");
+                return Ok(());
+            }
         }
+
+        // Delete entry
+        ops.delete_entry(&vault_path, &scope)?;
+
+        success(&format!("Deleted: {}", scope));
         Ok(())
     }
 
-    /// Show session status.
-    fn show_status(&self) -> Result<()> {
+    /// Rename an entry.
+    fn rename_entry(&self, old_scope: String, new_scope: String) -> Result<()> {
+        let vault_path = self.get_vault_file()?;
+        let ops = VaultOperations::new();
+
+        // Rename entry
+        ops.rename_entry(&vault_path, &old_scope, &new_scope)?;
+
+        success(&format!("Renamed: {} -> {}", old_scope, new_scope));
+        Ok(())
+    }
+
+
+    /// Encrypt vault file with GPG.
+    fn gpg_encrypt(&self, recipient: Option<&str>, armor: bool, backup: bool) -> Result<()> {
         let vault_path = self.get_vault_file()?;
 
-        if let Some(session) = SessionManager::get_session(&vault_path) {
-            let remaining = session.remaining_seconds();
-            println!("{}: Active", "Status".bold());
-            println!("{}: {} seconds", "Time remaining".bold(), remaining);
-            println!("{}: {}", "Vault".bold(), vault_path.display());
+        // Create backup if requested
+        if backup {
+            let backup_path = GpgOperations::backup_vault(&vault_path)?;
+            println!("Created backup: {}", backup_path.display());
+        }
+
+        // Perform encryption
+        let output_path = GpgOperations::encrypt_vault(&vault_path, recipient, armor)?;
+        
+        success(&format!(
+            "Vault encrypted successfully: {}",
+            output_path.display()
+        ));
+
+        if recipient.is_some() {
+            println!("Encrypted for recipient: {}", recipient.unwrap());
         } else {
-            println!("{}: Locked", "Status".bold());
-            println!("{}: {}", "Vault".bold(), vault_path.display());
+            println!("Encrypted with symmetric key (password-based)");
         }
 
         Ok(())
     }
 
-    /// Get password for vault operations.
+    /// Decrypt GPG-encrypted vault file.
+    fn gpg_decrypt(&self, input: Option<&Path>, output: Option<&Path>) -> Result<()> {
+        // Determine input file
+        let encrypted_path = if let Some(path) = input {
+            path.to_path_buf()
+        } else {
+            // Try to find encrypted vault
+            let vault_path = self.get_vault_file()?;
+            let gpg_path = vault_path.with_extension("md.gpg");
+            let asc_path = vault_path.with_extension("md.asc");
+
+            if gpg_path.exists() {
+                gpg_path
+            } else if asc_path.exists() {
+                asc_path
+            } else {
+                return Err(VaultError::Other(
+                    "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string()
+                ));
+            }
+        };
+
+        // Perform decryption
+        let output_path = GpgOperations::decrypt_vault(&encrypted_path, output)?;
+        
+        success(&format!(
+            "Vault decrypted successfully: {}",
+            output_path.display()
+        ));
+
+        Ok(())
+    }
+
+    /// Get password with confirmation for new entries.
     fn get_password_with_confirmation(&self, prompt: &str) -> Result<String> {
         use dialoguer::Password;
 
@@ -699,58 +564,34 @@ impl Cli {
         Ok(password)
     }
 
-    fn get_password(&self, vault_path: &Path, allow_session: bool) -> Result<String> {
-        // Check for active session
-        if allow_session {
-            if let Some(session) = SessionManager::get_session(vault_path) {
-                if let Some(ref key) = session.cached_key {
-                    // Decrypt a small test to verify the key still works
-                    // This prevents using stale session data
-                    return Ok(String::from_utf8(key.clone())?);
-                }
-            }
-        }
+    /// Get secret interactively using the system editor.
+    fn get_secret_interactively(&self) -> Result<String> {
+        println!("Opening editor for secret input...");
+        crate::secure_temp::get_secret_from_editor(None)
+    }
 
-        // Prompt for password with masked input
-        use dialoguer::Password;
-        let password = Password::new()
-            .with_prompt("Enter vault password")
-            .interact()
-            .map_err(|e| VaultError::Other(e.to_string()))?;
-
-        if password.is_empty() {
-            return Err(VaultError::Cancelled);
-        }
-
-        // Create new session if we're allowing sessions
-        if allow_session {
-            let mut session = SessionManager::create_session(vault_path);
-            session.cached_key = Some(password.as_bytes().to_vec());
-        }
-
-        Ok(password)
+    /// Get secret from external editor (delegates to secure_temp).
+    fn get_secret_from_editor(&self) -> Result<String> {
+        crate::secure_temp::get_secret_from_editor(None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
     #[test]
     fn test_validate_scope_name() {
         assert!(utils::validate_scope_name("personal/email"));
         assert!(utils::validate_scope_name("work/vpn"));
         assert!(!utils::validate_scope_name(""));
-        assert!(!utils::validate_scope_name("with<invalid>"));
+        assert!(!utils::validate_scope_name("personal/."));
+        assert!(!utils::validate_scope_name("personal/.."));
     }
 
     #[test]
     fn test_parse_scope_path() {
-        assert_eq!(
-            utils::parse_scope_path("personal/banking/chase"),
-            vec!["personal", "banking", "chase"]
-        );
-        assert_eq!(utils::parse_scope_path("work"), vec!["work"]);
+        let parts = utils::parse_scope_path("personal/email/gmail");
+        assert_eq!(parts, vec!["personal", "email", "gmail"]);
     }
 }
