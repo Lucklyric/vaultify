@@ -145,34 +145,15 @@ async function install() {
     } catch (error) {
       // Fallback: try to build from source
       console.error('Failed to download pre-built binary:', error.message);
-      console.log('Attempting to build from source...');
+      console.error('\nPossible reasons:');
+      console.error('1. The release is still being built. Please try again in a few minutes.');
+      console.error('2. Your platform/architecture may not be supported.');
+      console.error('\nYou can:');
+      console.error('1. Wait a few minutes and try reinstalling');
+      console.error('2. Check https://github.com/Lucklyric/vault-cli/releases for available binaries');
+      console.error('3. Build from source by cloning the repository');
       
-      // Check if Rust is installed
-      try {
-        execSync('cargo --version', { stdio: 'ignore' });
-      } catch (e) {
-        throw new Error('Rust is not installed. Please install Rust from https://rustup.rs/');
-      }
-      
-      // Build from source
-      const projectRoot = path.join(__dirname, '..');
-      const rustDir = path.join(projectRoot, 'vault-cli-rust');
-      
-      if (!fs.existsSync(rustDir)) {
-        throw new Error('Source code not found. Please install from npm or clone the repository.');
-      }
-      
-      console.log('Building vault-cli from source...');
-      execSync('cargo build --release', {
-        cwd: rustDir,
-        stdio: 'inherit',
-      });
-      
-      // Copy binary to bin directory
-      const srcBinary = path.join(rustDir, 'target', 'release', process.platform === 'win32' ? 'vault.exe' : 'vault');
-      fs.copyFileSync(srcBinary, binaryPath);
-      
-      console.log('vault-cli built and installed successfully!');
+      throw new Error('Binary download failed. See above for solutions.');
     }
   } catch (error) {
     console.error('Installation failed:', error.message);
