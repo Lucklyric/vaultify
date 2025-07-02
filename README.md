@@ -4,18 +4,19 @@ A secure, file-based password manager with hierarchical organization. Written in
 
 [![CI](https://github.com/Lucklyric/vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucklyric/vault-cli/actions/workflows/ci.yml)
 [![Release](https://github.com/Lucklyric/vault-cli/actions/workflows/release.yml/badge.svg)](https://github.com/Lucklyric/vault-cli/actions/workflows/release.yml)
-[![npm version](https://badge.fury.io/js/@vault-cli%2Fvault.svg)](https://www.npmjs.com/package/@vault-cli/vault)
+[![npm version](https://badge.fury.io/js/@lucklyric%2Fvault-cli.svg)](https://www.npmjs.com/package/@lucklyric/vault-cli)
 
 ## Features
 
 - 🔐 **Per-item encryption** with Argon2id + AES-256-GCM
 - 📁 **Hierarchical organization** of secrets
 - 📝 **Markdown-based** vault format for easy versioning
-- 🔍 **Fast search** across entries
+- 🔍 **Fast filtering** of entries
 - 📋 **Clipboard integration** with automatic clearing
 - 🚀 **Interactive and CLI modes**
 - 🦀 **Written in Rust** for performance and security
-- 📦 **Easy installation** via npm, homebrew, or pre-built binaries
+- 📦 **Easy installation** via npm or pre-built binaries
+- 🔑 **GPG integration** for additional vault encryption
 
 ## Installation
 
@@ -23,13 +24,13 @@ A secure, file-based password manager with hierarchical organization. Written in
 
 ```bash
 # Install globally
-npm install -g @vault-cli/vault
+npm install -g @lucklyric/vault-cli
 
 # Or with yarn
-yarn global add @vault-cli/vault
+yarn global add @lucklyric/vault-cli
 
 # Or run directly with npx
-npx @vault-cli/vault
+npx @lucklyric/vault-cli
 ```
 
 ### Pre-built binaries
@@ -41,7 +42,7 @@ Download the latest release for your platform from the [releases page](https://g
 ```bash
 # Clone the repository
 git clone https://github.com/Lucklyric/vault-cli.git
-cd vault-cli/vault-cli-rust
+cd vault-cli
 
 # Build with Rust
 cargo build --release
@@ -62,14 +63,11 @@ This creates a `vault.md` file in the current directory.
 ### Add a secret
 
 ```bash
-# Interactive mode (recommended for passwords)
+# Will open your system editor for secure input
 vault add personal/email/gmail -d "Personal Gmail account"
 
 # From stdin
 echo "my-secret-password" | vault add personal/email/gmail --stdin -d "Personal Gmail"
-
-# Using editor
-vault add personal/email/gmail --editor -d "Personal Gmail"
 ```
 
 ### List entries
@@ -88,27 +86,36 @@ vault list personal/email
 ### Decrypt a secret
 
 ```bash
-# Display in terminal
+# Interactive mode - choose display format after entering password
+vault decrypt personal/email/gmail
+
+# Show in terminal directly
 vault decrypt personal/email/gmail --show
 
-# Copy to clipboard (auto-clears after 10 seconds)
-vault decrypt personal/email/gmail --clipboard
-
-# Custom timeout
-vault decrypt personal/email/gmail --clipboard --timeout 30
+# Direct to clipboard (auto-clears after 60 seconds)
+vault decrypt personal/email/gmail --no-display --clipboard
 ```
 
-### Search entries
+### Edit an entry
 
 ```bash
-# Search in scope names
-vault search gmail
+vault edit personal/email/gmail
+```
 
-# Search in descriptions
-vault search "email account" --description
+### Delete an entry
 
-# Case sensitive search
-vault search Gmail --case-sensitive
+```bash
+vault delete personal/email/gmail
+```
+
+### GPG Encryption
+
+```bash
+# Encrypt entire vault with GPG
+vault gpg-encrypt --recipient user@example.com
+
+# Decrypt GPG-encrypted vault
+vault gpg-decrypt
 ```
 
 ### Interactive mode
@@ -121,7 +128,7 @@ vault
 vault> help
 vault> list
 vault> add work/vpn
-vault> show work/vpn
+vault> decrypt work/vpn
 vault> exit
 ```
 
@@ -152,7 +159,7 @@ base64-encoded-encrypted-content
 - **Encryption**: Each entry is encrypted with Argon2id + AES-256-GCM
 - **Per-item salts**: Every entry has its own salt for enhanced security
 - **Memory safety**: Written in Rust with automatic memory zeroing
-- **No key storage**: Master password is never stored, only session keys
+- **No password storage**: Password required for every operation
 - **Secure permissions**: Vault files are created with 600 permissions
 
 ### Encryption Details
@@ -167,7 +174,7 @@ base64-encoded-encrypted-content
 ### Environment Variables
 
 - `VAULT_FILE`: Default vault file path
-- `EDITOR`: Editor to use for `--editor` mode (default: nano)
+- `EDITOR` or `VISUAL`: System editor for secret input (defaults: notepad on Windows, vi on Unix)
 
 ### File Permissions
 
@@ -178,7 +185,6 @@ On Unix systems, vault files are automatically created with 600 permissions (rea
 ### Building
 
 ```bash
-cd vault-cli-rust
 cargo build --release
 ```
 

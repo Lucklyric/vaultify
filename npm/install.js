@@ -109,7 +109,8 @@ async function install() {
     }
     
     // Check if binary already exists
-    const binaryPath = path.join(binDir, process.platform === 'win32' ? 'vault.exe' : 'vault');
+    const binaryName = process.platform === 'win32' ? 'vault.exe' : 'vault-bin';
+    const binaryPath = path.join(binDir, binaryName);
     if (fs.existsSync(binaryPath)) {
       console.log('Binary already installed.');
       return;
@@ -126,6 +127,14 @@ async function install() {
       
       // Clean up archive file
       fs.unlinkSync(archivePath);
+      
+      // Rename extracted binary if needed
+      if (process.platform !== 'win32') {
+        const extractedPath = path.join(binDir, 'vault');
+        if (fs.existsSync(extractedPath) && extractedPath !== binaryPath) {
+          fs.renameSync(extractedPath, binaryPath);
+        }
+      }
       
       // Make binary executable on Unix
       if (process.platform !== 'win32') {
