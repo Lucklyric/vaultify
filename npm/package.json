@@ -1,6 +1,6 @@
 {
   "name": "@lucklyric/vault-cli",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
   "bin": {

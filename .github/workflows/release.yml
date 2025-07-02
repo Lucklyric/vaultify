@@ -34,7 +34,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       
-      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Build binary
+        run: |
+          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" && "${{ runner.os }}" == "macOS" ]]; then
+            # For macOS ARM64 cross-compilation
+            export SDKROOT=$(xcrun -sdk macosx --show-sdk-path)
+            export MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)
+          fi
+          cargo build --release --target ${{ matrix.target }}
+        shell: bash
       
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -54,6 +62,11 @@ jobs:
         with:
           path: binaries
       
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find binaries -type f -ls
+      
       - name: Create archives
         run: |
           cd binaries
@@ -61,11 +74,15 @@ jobs:
           tar czf vault-macos-x64.tar.gz -C x86_64-apple-darwin vault
           tar czf vault-macos-arm64.tar.gz -C aarch64-apple-darwin vault
           zip vault-windows-x64.zip -j x86_64-pc-windows-msvc/vault.exe
+          echo "Created archives:"
+          ls -la *.tar.gz *.zip
       
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: binaries/*.{tar.gz,zip}
+          files: |
+            binaries/*.tar.gz
+            binaries/*.zip
       
       - uses: actions/setup-node@v4
         with:
