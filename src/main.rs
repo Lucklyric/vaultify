@@ -137,10 +137,10 @@ mod tests {
     #[test]
     fn test_cli_parsing() {
         // Test that CLI can be parsed without panicking
-        let cli = Cli::try_parse_from(&["vault", "list"]);
+        let cli = Cli::try_parse_from(["vault", "list"]);
         assert!(cli.is_ok());
 
-        let cli = Cli::try_parse_from(&["vault", "list", "--tree"]);
+        let cli = Cli::try_parse_from(["vault", "list", "--tree"]);
         assert!(cli.is_ok());
     }
 }

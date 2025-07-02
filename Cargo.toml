@@ -1,6 +1,6 @@
 [package]
 name = "vault-cli"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["vault-cli contributors"]
 description = "A secure, file-based secrets vault with interactive CLI"
