@@ -305,7 +305,7 @@ impl Cli {
         // Add entry
         ops.add_entry(&vault_path, &scope, &description, &secret, &password)?;
 
-        success(&format!("Added: {}", scope));
+        success(&format!("Added: {scope}"));
         Ok(())
     }
 
@@ -337,7 +337,7 @@ impl Cli {
                         println!("{} - {}", line, entry.description);
                     }
                 } else {
-                    println!("{}", line);
+                    println!("{line}");
                 }
             }
         } else {
