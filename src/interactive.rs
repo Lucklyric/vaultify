@@ -295,7 +295,7 @@ impl InteractiveVault {
             let masked = "*".repeat(result.plaintext.len());
             println!("\n{} Secret (masked):", "🔒".cyan());
             println!("{}", "=".repeat(50));
-            println!("{}", masked);
+            println!("{masked}");
             println!("{}", "=".repeat(50));
             println!("Length: {} characters", result.plaintext.len());
         }

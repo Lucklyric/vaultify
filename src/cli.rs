@@ -346,7 +346,7 @@ impl Cli {
                 OutputFormat::Text => {
                     // If filtering, show a header
                     if let Some(ref filter) = scope_filter {
-                        println!("Entries matching '{}':", filter);
+                        println!("Entries matching '{filter}':");
                         println!();
                     }
 
@@ -449,7 +449,7 @@ impl Cli {
             &password,
         )?;
 
-        success(&format!("Updated: {}", scope));
+        success(&format!("Updated: {scope}"));
         Ok(())
     }
 
@@ -460,7 +460,7 @@ impl Cli {
 
         // Confirm deletion
         if !force {
-            print!("Delete '{}'? [y/N]: ", scope);
+            print!("Delete '{scope}'? [y/N]: ");
             io::stdout().flush()?;
             let mut confirm = String::new();
             io::stdin().read_line(&mut confirm)?;
@@ -474,7 +474,7 @@ impl Cli {
         // Delete entry
         ops.delete_entry(&vault_path, &scope)?;
 
-        success(&format!("Deleted: {}", scope));
+        success(&format!("Deleted: {scope}"));
         Ok(())
     }
 
@@ -486,7 +486,7 @@ impl Cli {
         // Rename entry
         ops.rename_entry(&vault_path, &old_scope, &new_scope)?;
 
-        success(&format!("Renamed: {} -> {}", old_scope, new_scope));
+        success(&format!("Renamed: {old_scope} -> {new_scope}"));
         Ok(())
     }
 

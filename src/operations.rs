@@ -261,14 +261,14 @@ impl VaultOperations {
                     "⚠️ Warning:".yellow().bold()
                 );
                 println!("{}", "=".repeat(50));
-                println!("{}", plaintext);
+                println!("{plaintext}");
                 println!("{}", "=".repeat(50));
             } else {
                 // Display masked text
                 let masked = "*".repeat(plaintext.len());
                 println!("\n{} Secret (masked):", "🔒".cyan());
                 println!("{}", "=".repeat(50));
-                println!("{}", masked);
+                println!("{masked}");
                 println!("{}", "=".repeat(50));
                 println!("Length: {} characters", plaintext.len());
             }

@@ -63,7 +63,7 @@ impl VaultParser {
 
     /// Parse vault content into a VaultDocument.
     pub fn parse(&self, content: &str) -> Result<VaultDocument, ParseError> {
-        let lines: Vec<String> = content.lines().map(|s| format!("{}\n", s)).collect();
+        let lines: Vec<String> = content.lines().map(|s| format!("{s}\n")).collect();
         let mut entries = Vec::new();
 
         // Extract and validate version
@@ -232,7 +232,7 @@ impl VaultParser {
         // Heading
         let heading_prefix = "#".repeat(entry.heading_level as usize);
         let scope_string = entry.scope_string();
-        lines.push(format!("{} {}\n", heading_prefix, scope_string));
+        lines.push(format!("{heading_prefix} {scope_string}\n"));
 
         // Description block
         lines.push("<description/>\n".to_string());
@@ -247,7 +247,7 @@ impl VaultParser {
         // Encrypted block
         if let Some(salt) = &entry.salt {
             let salt_b64 = VaultCrypto::encode_salt(salt);
-            lines.push(format!("<encrypted salt=\"{}\">\n", salt_b64));
+            lines.push(format!("<encrypted salt=\"{salt_b64}\">\n"));
         } else {
             lines.push("<encrypted>\n".to_string());
         }
