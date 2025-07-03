@@ -112,7 +112,7 @@ pub fn check_file_permissions(path: &Path) -> Vec<String> {
 pub fn get_multiline_input(prompt: &str) -> Result<String> {
     use std::io;
 
-    println!("{}", prompt);
+    println!("{prompt}");
     println!("Enter your text (press Ctrl+D or type 'EOF' on a new line to finish):");
     println!("{}", "-".repeat(50));
 
@@ -240,7 +240,7 @@ pub fn format_tree(scopes: &[String]) -> Vec<String> {
         }
 
         let item_name = parts.last().unwrap_or(&"");
-        lines.push(format!("{}{}", prefix, item_name));
+        lines.push(format!("{prefix}{item_name}"));
 
         // Update last_parts for next iteration
         last_parts.clear();

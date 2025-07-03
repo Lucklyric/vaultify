@@ -79,7 +79,7 @@ impl SecureTempFile {
         // Keep the file but we'll manage it ourselves
         let (_file, path_owned) = temp_file
             .keep()
-            .map_err(|e| VaultError::Other(format!("Failed to persist temp file: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to persist temp file: {e}")))?;
 
         // Set restrictive permissions on Unix
         #[cfg(unix)]
@@ -125,7 +125,7 @@ impl SecureTempFile {
             .arg(&self.path)
             .status()
             .map_err(|e| {
-                VaultError::Other(format!("Failed to launch editor '{}': {}", editor, e))
+                VaultError::Other(format!("Failed to launch editor '{editor}': {e}"))
             })?;
 
         if !status.success() {

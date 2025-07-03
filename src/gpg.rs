@@ -14,7 +14,7 @@ impl GpgOperations {
         let output = Command::new("gpg")
             .arg("--version")
             .output()
-            .map_err(|e| VaultError::Other(format!("GPG not found: {}. Please install GPG.", e)))?;
+            .map_err(|e| VaultError::Other(format!("GPG not found: {e}. Please install GPG.")))?;
 
         if !output.status.success() {
             return Err(VaultError::Other("GPG command failed".to_string()));
