@@ -1,6 +1,6 @@
 {
   "name": "@lucklyric/vaultify",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
   "bin": {
