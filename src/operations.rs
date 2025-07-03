@@ -229,16 +229,14 @@ impl VaultOperations {
             // Direct to clipboard without showing
             ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
             success(&format!(
-                "Copied to clipboard (will clear in {} seconds)",
-                timeout
+                "Copied to clipboard (will clear in {timeout} seconds)"
             ));
             success("Secret was not displayed on screen for security");
         } else if clipboard {
             // Copy to clipboard
             ClipboardManager::copy_with_timeout(&plaintext, timeout).await?;
             success(&format!(
-                "Copied to clipboard (will clear in {} seconds)",
-                timeout
+                "Copied to clipboard (will clear in {timeout} seconds)"
             ));
         } else if show_plaintext {
             // Interactive display mode
