@@ -1,11 +1,9 @@
-# Exclude everything by default
-*
-*/
+# Exclude the wrapper script from npm package
+# The install.js script will download the actual binary
+bin/
 
-# Only include these files for npm package
+# Include everything else
 !package.json
-!README.md
 !install.js
 !index.js
-!bin/
-!bin/vault
+!README.md
