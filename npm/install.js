@@ -109,7 +109,7 @@ async function install() {
     }
     
     // Check if binary already exists
-    const binaryName = process.platform === 'win32' ? 'vaultify.exe' : 'vaultify-bin';
+    const binaryName = process.platform === 'win32' ? 'vaultify.exe' : 'vaultify';
     const binaryPath = path.join(binDir, binaryName);
     if (fs.existsSync(binaryPath)) {
       console.log('Binary already installed.');
