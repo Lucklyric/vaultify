@@ -1,0 +1,30 @@
+#!/bin/sh
+# Pre-push hook to ensure code passes CI checks before pushing
+
+echo "Running pre-push checks..."
+
+# Run tests
+echo "Running tests..."
+cargo test --quiet
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Please fix before pushing."
+    exit 1
+fi
+
+# Check formatting
+echo "Checking formatting..."
+cargo fmt -- --check
+if [ $? -ne 0 ]; then
+    echo "❌ Code is not formatted. Run 'cargo fmt' to fix."
+    exit 1
+fi
+
+# Run clippy
+echo "Running clippy..."
+cargo clippy -- -D warnings
+if [ $? -ne 0 ]; then
+    echo "❌ Clippy warnings found. Run 'cargo clippy --fix' to fix."
+    exit 1
+fi
+
+echo "✅ All checks passed!"
