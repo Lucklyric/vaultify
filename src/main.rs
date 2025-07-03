@@ -104,7 +104,7 @@ async fn run_interactive() {
                         println!("{} Created vault at: {}", "✓".green(), vault_path.display());
                         vault_path
                     }
-                    Err(e) => error_exit(&format!("Failed to create vault: {}", e), 1),
+                    Err(e) => error_exit(&format!("Failed to create vault: {e}"), 1),
                 }
             } else {
                 error_exit(

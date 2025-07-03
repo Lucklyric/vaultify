@@ -337,7 +337,7 @@ impl InteractiveVault {
             .ops
             .get_password(&self.vault_path, "Enter vault password", true)?;
 
-        println!("Editing: {} (press Enter to keep current value)", scope);
+        println!("Editing: {scope} (press Enter to keep current value)");
 
         // Get new description
         print!("New description (or Enter to keep current): ");
@@ -380,7 +380,7 @@ impl InteractiveVault {
     /// Delete an entry.
     fn delete_entry(&mut self, scope: &str) -> Result<()> {
         // Confirm deletion
-        print!("Delete '{}'? [y/N]: ", scope);
+        print!("Delete '{scope}'? [y/N]: ");
         io::stdout().flush()?;
         let mut confirm = String::new();
         io::stdin().read_line(&mut confirm)?;
