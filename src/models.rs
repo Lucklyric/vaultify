@@ -62,7 +62,7 @@ impl Default for VaultDocument {
     fn default() -> Self {
         Self {
             entries: Vec::new(),
-            raw_lines: vec!["# root <!-- vault-cli v1 -->\n".to_string()],
+            raw_lines: vec!["# root <!-- vaultify v1 -->\n".to_string()],
             file_path: None,
         }
     }

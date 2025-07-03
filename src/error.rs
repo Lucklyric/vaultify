@@ -1,4 +1,4 @@
-//! Error types for vault-cli.
+//! Error types for vaultify.
 
 use std::path::PathBuf;
 use thiserror::Error;

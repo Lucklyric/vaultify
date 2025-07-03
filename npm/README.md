@@ -1,4 +1,4 @@
-# @lucklyric/vault-cli
+# @lucklyric/vaultify
 
 A secure command-line password manager with hierarchical organization. Pre-compiled binaries for Linux, macOS, and Windows.
 
@@ -6,13 +6,13 @@ A secure command-line password manager with hierarchical organization. Pre-compi
 
 ```bash
 # Install globally
-npm install -g @lucklyric/vault-cli
+npm install -g @lucklyric/vaultify
 
 # Or with yarn
-yarn global add @lucklyric/vault-cli
+yarn global add @lucklyric/vaultify
 
 # Or run directly with npx
-npx @lucklyric/vault-cli
+npx @lucklyric/vaultify
 ```
 
 The installer will automatically download the appropriate pre-built binary for your platform.
@@ -22,72 +22,72 @@ The installer will automatically download the appropriate pre-built binary for y
 ### Initialize a vault
 
 ```bash
-vault init
+vaultify init
 ```
 
 ### Add a secret
 
 ```bash
 # Will open your system editor for secure input
-vault add personal/email -d "Personal email account"
+vaultify add personal/email -d "Personal email account"
 
 # Or read from stdin
-echo "my-secret" | vault add personal/api-key --stdin
+echo "my-secret" | vaultify add personal/api-key --stdin
 ```
 
 ### List entries
 
 ```bash
 # Simple list
-vault list
+vaultify list
 
 # Tree view
-vault list --tree
+vaultify list --tree
 
 # Filter entries
-vault list gmail
+vaultify list gmail
 ```
 
 ### Decrypt a secret
 
 ```bash
 # Interactive mode - choose display format after entering password
-vault decrypt personal/email
+vaultify decrypt personal/email
 
 # Direct to clipboard (auto-clears after 60 seconds)
-vault decrypt personal/email --no-display --clipboard
+vaultify decrypt personal/email --no-display --clipboard
 
 # Show in terminal
-vault decrypt personal/email --show
+vaultify decrypt personal/email --show
 ```
 
 ### Edit an entry
 
 ```bash
-vault edit personal/email
+vaultify edit personal/email
 ```
 
 ### Delete an entry
 
 ```bash
-vault delete personal/email
+vaultify delete personal/email
 ```
 
 ### Interactive mode
 
 ```bash
 # Run without arguments for interactive mode
-vault
+vaultify
 ```
 
 ### GPG Encryption
 
 ```bash
 # Encrypt entire vault with GPG
-vault gpg-encrypt --recipient user@example.com
+vaultify gpg-encrypt --recipient user@example.com
 
 # Decrypt GPG-encrypted vault
-vault gpg-decrypt
+vaultify gpg-decrypt
 ```
 
 ## Features
@@ -118,7 +118,7 @@ Pre-built binaries are available for:
 
 ## Documentation
 
-For full documentation and source code, visit [https://github.com/Lucklyric/vault-cli](https://github.com/Lucklyric/vault-cli)
+For full documentation and source code, visit [https://github.com/Lucklyric/vaultify](https://github.com/Lucklyric/vaultify)
 
 ## License
 

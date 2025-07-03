@@ -52,7 +52,7 @@ impl InteractiveVault {
         self.show_help();
 
         loop {
-            let prompt = format!("{} ", "vault>".cyan());
+            let prompt = format!("{} ", "vaultify>".cyan());
             match self.editor.readline(&prompt) {
                 Ok(line) => {
                     let line = line.trim();
@@ -589,7 +589,7 @@ mod tests {
         let vault_path = dir.path().join("test_vault.md");
 
         // Create a test vault file
-        std::fs::write(&vault_path, "# root <!-- vault-cli v1 -->\n").unwrap();
+        std::fs::write(&vault_path, "# root <!-- vaultify v1 -->\n").unwrap();
 
         // Create interactive vault
         let vault = InteractiveVault::new(vault_path.clone());

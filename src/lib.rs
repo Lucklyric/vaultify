@@ -1,4 +1,4 @@
-//! vault-cli: A secure password manager with hierarchical organization.
+//! vaultify: A secure password manager with hierarchical organization.
 
 pub mod cli;
 pub mod crypto;

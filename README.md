@@ -1,10 +1,10 @@
-# vault-cli
+# vaultify
 
 A secure, file-based password manager with hierarchical organization. Written in Rust for performance and security.
 
-[![CI](https://github.com/Lucklyric/vault-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucklyric/vault-cli/actions/workflows/ci.yml)
-[![Release](https://github.com/Lucklyric/vault-cli/actions/workflows/release.yml/badge.svg)](https://github.com/Lucklyric/vault-cli/actions/workflows/release.yml)
-[![npm version](https://badge.fury.io/js/@lucklyric%2Fvault-cli.svg)](https://www.npmjs.com/package/@lucklyric/vault-cli)
+[![CI](https://github.com/Lucklyric/vaultify/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucklyric/vaultify/actions/workflows/ci.yml)
+[![Release](https://github.com/Lucklyric/vaultify/actions/workflows/release.yml/badge.svg)](https://github.com/Lucklyric/vaultify/actions/workflows/release.yml)
+[![npm version](https://badge.fury.io/js/@lucklyric%2Fvaultify.svg)](https://www.npmjs.com/package/@lucklyric/vaultify)
 
 ## Features
 
@@ -24,30 +24,30 @@ A secure, file-based password manager with hierarchical organization. Written in
 
 ```bash
 # Install globally
-npm install -g @lucklyric/vault-cli
+npm install -g @lucklyric/vaultify
 
 # Or with yarn
-yarn global add @lucklyric/vault-cli
+yarn global add @lucklyric/vaultify
 
 # Or run directly with npx
-npx @lucklyric/vault-cli
+npx @lucklyric/vaultify
 ```
 
 ### Pre-built binaries
 
-Download the latest release for your platform from the [releases page](https://github.com/Lucklyric/vault-cli/releases).
+Download the latest release for your platform from the [releases page](https://github.com/Lucklyric/vaultify/releases).
 
 ### From source
 
 ```bash
 # Clone the repository
-git clone https://github.com/Lucklyric/vault-cli.git
-cd vault-cli
+git clone https://github.com/Lucklyric/vaultify.git
+cd vaultify
 
 # Build with Rust
 cargo build --release
 
-# Binary will be at target/release/vault
+# Binary will be at target/release/vaultify
 ```
 
 ## Quick Start
@@ -55,7 +55,7 @@ cargo build --release
 ### Initialize a vault
 
 ```bash
-vault init
+vaultify init
 ```
 
 This creates a `vault.md` file in the current directory.
@@ -64,72 +64,72 @@ This creates a `vault.md` file in the current directory.
 
 ```bash
 # Will open your system editor for secure input
-vault add personal/email/gmail -d "Personal Gmail account"
+vaultify add personal/email/gmail -d "Personal Gmail account"
 
 # From stdin
-echo "my-secret-password" | vault add personal/email/gmail --stdin -d "Personal Gmail"
+echo "my-secret-password" | vaultify add personal/email/gmail --stdin -d "Personal Gmail"
 ```
 
 ### List entries
 
 ```bash
 # Simple list
-vault list
+vaultify list
 
 # Tree view
-vault list --tree
+vaultify list --tree
 
 # Filter by scope
-vault list personal/email
+vaultify list personal/email
 ```
 
 ### Decrypt a secret
 
 ```bash
 # Interactive mode - choose display format after entering password
-vault decrypt personal/email/gmail
+vaultify decrypt personal/email/gmail
 
 # Show in terminal directly
-vault decrypt personal/email/gmail --show
+vaultify decrypt personal/email/gmail --show
 
 # Direct to clipboard (auto-clears after 60 seconds)
-vault decrypt personal/email/gmail --no-display --clipboard
+vaultify decrypt personal/email/gmail --no-display --clipboard
 ```
 
 ### Edit an entry
 
 ```bash
-vault edit personal/email/gmail
+vaultify edit personal/email/gmail
 ```
 
 ### Delete an entry
 
 ```bash
-vault delete personal/email/gmail
+vaultify delete personal/email/gmail
 ```
 
 ### GPG Encryption
 
 ```bash
 # Encrypt entire vault with GPG
-vault gpg-encrypt --recipient user@example.com
+vaultify gpg-encrypt --recipient user@example.com
 
 # Decrypt GPG-encrypted vault
-vault gpg-decrypt
+vaultify gpg-decrypt
 ```
 
 ### Interactive mode
 
-Run `vault` without any arguments to enter interactive mode:
+Run `vaultify` without any arguments to enter interactive mode:
 
 ```bash
-vault
+vaultify
 
-vault> help
-vault> list
-vault> add work/vpn
-vault> decrypt work/vpn
-vault> exit
+vaultify> help
+vaultify> list
+vaultify> add work/vpn
+vaultify> decrypt work/vpn
+vaultify> exit
 ```
 
 ## Vault Format
@@ -137,7 +137,7 @@ vault> exit
 Vaults are stored as markdown files with encrypted content:
 
 ```markdown
-# root <!-- vault-cli v1 -->
+# root <!-- vaultify v1 -->
 
 ## personal
 <description/>
