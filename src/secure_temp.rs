@@ -124,9 +124,7 @@ impl SecureTempFile {
         let status = Command::new(&editor)
             .arg(&self.path)
             .status()
-            .map_err(|e| {
-                VaultError::Other(format!("Failed to launch editor '{editor}': {e}"))
-            })?;
+            .map_err(|e| VaultError::Other(format!("Failed to launch editor '{editor}': {e}")))?;
 
         if !status.success() {
             return Err(VaultError::Other("Editor exited with error".to_string()));
