@@ -1,10 +1,10 @@
 {
-  "name": "@lucklyric/vault-cli",
-  "version": "1.0.4",
+  "name": "@lucklyric/vaultify",
+  "version": "0.2.0",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
   "bin": {
-    "vault": "./bin/vault"
+    "vaultify": "./bin/vaultify"
   },
   "scripts": {
     "postinstall": "node install.js",
@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Lucklyric/vault-cli.git"
+    "url": "git+https://github.com/Lucklyric/vaultify.git"
   },
   "keywords": [
     "password",
@@ -22,12 +22,12 @@
     "cli",
     "password-manager"
   ],
-  "author": "vault-cli contributors",
+  "author": "vaultify contributors",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/Lucklyric/vault-cli/issues"
+    "url": "https://github.com/Lucklyric/vaultify/issues"
   },
-  "homepage": "https://github.com/Lucklyric/vault-cli#readme",
+  "homepage": "https://github.com/Lucklyric/vaultify#readme",
   "files": [
     "bin/",
     "index.js",

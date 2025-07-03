@@ -6,7 +6,7 @@ const { execSync } = require('child_process');
 const https = require('https');
 const tar = require('tar');
 
-const REPO = 'Lucklyric/vault-cli';
+const REPO = 'Lucklyric/vaultify';
 const VERSION = require('./package.json').version;
 
 // Map Node's platform names to Rust's target triple components
@@ -40,13 +40,13 @@ function getArch() {
 function getBinaryName() {
   // Match the naming in our GitHub release workflow
   if (process.platform === 'linux' && process.arch === 'x64') {
-    return 'vault-linux-x64';
+    return 'vaultify-linux-x64';
   } else if (process.platform === 'darwin' && process.arch === 'x64') {
-    return 'vault-macos-x64';
+    return 'vaultify-macos-x64';
   } else if (process.platform === 'darwin' && process.arch === 'arm64') {
-    return 'vault-macos-arm64';
+    return 'vaultify-macos-arm64';
   } else if (process.platform === 'win32' && process.arch === 'x64') {
-    return 'vault-windows-x64';
+    return 'vaultify-windows-x64';
   }
   throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
 }
@@ -109,7 +109,7 @@ async function install() {
     }
     
     // Check if binary already exists
-    const binaryName = process.platform === 'win32' ? 'vault.exe' : 'vault-bin';
+    const binaryName = process.platform === 'win32' ? 'vaultify.exe' : 'vaultify-bin';
     const binaryPath = path.join(binDir, binaryName);
     if (fs.existsSync(binaryPath)) {
       console.log('Binary already installed.');
@@ -119,7 +119,7 @@ async function install() {
     // Download binary
     const url = getBinaryUrl();
     const ext = process.platform === 'win32' ? '.zip' : '.tar.gz';
-    const archivePath = path.join(binDir, `vault${ext}`);
+    const archivePath = path.join(binDir, `vaultify${ext}`);
     
     try {
       await downloadBinary(url, archivePath);
@@ -130,7 +130,7 @@ async function install() {
       
       // Rename extracted binary if needed
       if (process.platform !== 'win32') {
-        const extractedPath = path.join(binDir, 'vault');
+        const extractedPath = path.join(binDir, 'vaultify');
         if (fs.existsSync(extractedPath) && extractedPath !== binaryPath) {
           fs.renameSync(extractedPath, binaryPath);
         }
@@ -141,7 +141,7 @@ async function install() {
         fs.chmodSync(binaryPath, 0o755);
       }
       
-      console.log('vault-cli installed successfully!');
+      console.log('vaultify installed successfully!');
     } catch (error) {
       // Fallback: try to build from source
       console.error('Failed to download pre-built binary:', error.message);
@@ -150,7 +150,7 @@ async function install() {
       console.error('2. Your platform/architecture may not be supported.');
       console.error('\nYou can:');
       console.error('1. Wait a few minutes and try reinstalling');
-      console.error('2. Check https://github.com/Lucklyric/vault-cli/releases for available binaries');
+      console.error('2. Check https://github.com/Lucklyric/vaultify/releases for available binaries');
       console.error('3. Build from source by cloning the repository');
       
       throw new Error('Binary download failed. See above for solutions.');

@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use zeroize::Zeroize;
 
-/// Prefix for vault-cli temporary files
-const TEMP_FILE_PREFIX: &str = "vault-cli-edit-";
+/// Prefix for vaultify temporary files
+const TEMP_FILE_PREFIX: &str = "vaultify-edit-";
 
-/// Get the secure temp directory for vault-cli
+/// Get the secure temp directory for vaultify
 fn get_secure_temp_dir() -> Result<PathBuf> {
-    let temp_dir = std::env::temp_dir().join("vault-cli-secure");
+    let temp_dir = std::env::temp_dir().join("vaultify-secure");
 
     // Create directory if it doesn't exist
     if !temp_dir.exists() {

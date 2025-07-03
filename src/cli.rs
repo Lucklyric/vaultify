@@ -250,7 +250,7 @@ impl Cli {
         }
 
         // Create vault file
-        let content = "# root <!-- vault-cli v1 -->\n";
+        let content = "# root <!-- vaultify v1 -->\n";
         fs::write(&vault_path, content)?;
 
         // Set proper permissions on Unix

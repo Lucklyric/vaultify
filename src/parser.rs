@@ -41,7 +41,7 @@ impl Default for VaultParser {
                 r"^(#{1,6})\s+(.+?)(?:\s*<!--\s*scope key:\s*(\S+)\s*-->)?$",
             )
             .unwrap(),
-            version_pattern: Regex::new(r"<!--\s*vault-cli\s+(v\d+)\s*-->").unwrap(),
+            version_pattern: Regex::new(r"<!--\s*vaultify\s+(v\d+)\s*-->").unwrap(),
             description_start: Regex::new(r"^<description/?>$").unwrap(),
             description_end: Regex::new(r"^</description>$").unwrap(),
             encrypted_start: Regex::new(r#"^<encrypted(?:\s+salt="([^"]+)")?>$"#).unwrap(),
@@ -58,7 +58,7 @@ impl VaultParser {
 
     /// Create a new root document with version.
     pub fn create_root_document() -> String {
-        "# root <!-- vault-cli v1 -->\n".to_string()
+        "# root <!-- vaultify v1 -->\n".to_string()
     }
 
     /// Parse vault content into a VaultDocument.
@@ -328,7 +328,7 @@ impl VaultParser {
 mod tests {
     use super::*;
 
-    const SAMPLE_VAULT: &str = r#"# root <!-- vault-cli v1 -->
+    const SAMPLE_VAULT: &str = r#"# root <!-- vaultify v1 -->
 
 ## personal
 <description/>
@@ -381,7 +381,7 @@ Work-related secrets
         let parser = VaultParser::new();
 
         // Valid version
-        let valid_vault = r#"# root <!-- vault-cli v1 -->
+        let valid_vault = r#"# root <!-- vaultify v1 -->
 ## test
 <description/>
 Test
@@ -391,7 +391,7 @@ Test
         assert!(parser.parse(valid_vault).is_ok());
 
         // Invalid version
-        let invalid_vault = r#"# root <!-- vault-cli v99 -->
+        let invalid_vault = r#"# root <!-- vaultify v99 -->
 ## test
 <description/>
 Test

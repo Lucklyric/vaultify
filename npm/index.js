@@ -5,18 +5,18 @@ const path = require('path');
 const fs = require('fs');
 
 // Get the path to the binary
-const binaryPath = path.join(__dirname, 'bin', process.platform === 'win32' ? 'vault.exe' : 'vault-bin');
+const binaryPath = path.join(__dirname, 'bin', process.platform === 'win32' ? 'vaultify.exe' : 'vaultify-bin');
 
 // Check if binary exists
 if (!fs.existsSync(binaryPath)) {
-  console.error('vault-cli binary not found. Running postinstall...');
+  console.error('vaultify binary not found. Running postinstall...');
   try {
     require('child_process').execSync('node ' + path.join(__dirname, 'install.js'), {
       stdio: 'inherit',
       cwd: __dirname
     });
   } catch (e) {
-    console.error('Failed to install vault-cli binary');
+    console.error('Failed to install vaultify binary');
     process.exit(1);
   }
 }
@@ -33,6 +33,6 @@ child.on('close', (code) => {
 
 // Handle spawn errors
 child.on('error', (err) => {
-  console.error('Failed to run vault-cli:', err.message);
+  console.error('Failed to run vaultify:', err.message);
   process.exit(1);
 });
