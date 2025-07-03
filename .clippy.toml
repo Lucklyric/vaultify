@@ -1,0 +1,8 @@
+# Clippy configuration for vaultify
+# This ensures consistent linting between local development and CI
+
+# Set MSRV (Minimum Supported Rust Version)
+msrv = "1.75.0"
+
+# Ensure format string lints are always enabled
+warn-on-all-wildcard-imports = true
