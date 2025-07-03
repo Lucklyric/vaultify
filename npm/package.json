@@ -1,10 +1,10 @@
 {
   "name": "@lucklyric/vaultify",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "A secure password manager with hierarchical organization",
   "main": "index.js",
   "bin": {
-    "vaultify": "./bin/vaultify"
+    "vaultify": "./index.js"
   },
   "scripts": {
     "postinstall": "node install.js",
@@ -29,7 +29,6 @@
   },
   "homepage": "https://github.com/Lucklyric/vaultify#readme",
   "files": [
-    "bin/",
     "index.js",
     "install.js",
     "README.md"

@@ -108,12 +108,20 @@ async function install() {
       fs.mkdirSync(binDir, { recursive: true });
     }
     
-    // Check if binary already exists
+    // Check if actual binary already exists (not the wrapper script)
     const binaryName = process.platform === 'win32' ? 'vaultify.exe' : 'vaultify';
     const binaryPath = path.join(binDir, binaryName);
+    
+    // For non-Windows, check if it's the actual binary (not the 43-byte wrapper)
     if (fs.existsSync(binaryPath)) {
-      console.log('Binary already installed.');
-      return;
+      const stats = fs.statSync(binaryPath);
+      if (stats.size > 1000) {  // Real binary should be much larger than 43 bytes
+        console.log('Binary already installed.');
+        return;
+      } else {
+        // Remove the wrapper script so we can download the real binary
+        fs.unlinkSync(binaryPath);
+      }
     }
     
     // Download binary
