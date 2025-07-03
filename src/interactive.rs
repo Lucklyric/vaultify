@@ -75,7 +75,7 @@ impl InteractiveVault {
                     break;
                 }
                 Err(err) => {
-                    eprintln!("Error: {:?}", err);
+                    eprintln!("Error: {err:?}");
                     break;
                 }
             }
@@ -221,7 +221,7 @@ impl InteractiveVault {
                             println!("  {} - {}", line, entry.description);
                         }
                     } else {
-                        println!("  {}", line);
+                        println!("  {line}");
                     }
                 }
             }
@@ -233,13 +233,13 @@ impl InteractiveVault {
     /// Add a new entry.
     async fn add_entry(&mut self, scope: &str) -> Result<()> {
         // Get description
-        print!("Description (e.g., {} credentials): ", scope);
+        print!("Description (e.g., {scope} credentials): ");
         io::stdout().flush()?;
         let mut description = String::new();
         io::stdin().read_line(&mut description)?;
         let description = description.trim().to_string();
         let description = if description.is_empty() {
-            format!("{} credentials", scope)
+            format!("{scope} credentials")
         } else {
             description
         };
@@ -254,7 +254,7 @@ impl InteractiveVault {
         // Add entry
         self.ops
             .add_entry(&self.vault_path, scope, &description, &secret, &password)?;
-        success(&format!("Added: {}", scope));
+        success(&format!("Added: {scope}"));
 
         Ok(())
     }
@@ -372,7 +372,7 @@ impl InteractiveVault {
             new_description,
             &password,
         )?;
-        success(&format!("Updated: {}", scope));
+        success(&format!("Updated: {scope}"));
 
         Ok(())
     }
@@ -392,7 +392,7 @@ impl InteractiveVault {
 
         // Delete
         self.ops.delete_entry(&self.vault_path, scope)?;
-        success(&format!("Deleted: {}", scope));
+        success(&format!("Deleted: {scope}"));
 
         Ok(())
     }
@@ -401,7 +401,7 @@ impl InteractiveVault {
     fn rename_entry(&mut self, old_scope: &str, new_scope: &str) -> Result<()> {
         self.ops
             .rename_entry(&self.vault_path, old_scope, new_scope)?;
-        success(&format!("Renamed: {} -> {}", old_scope, new_scope));
+        success(&format!("Renamed: {old_scope} -> {new_scope}"));
         Ok(())
     }
 

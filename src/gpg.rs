@@ -62,11 +62,11 @@ impl GpgOperations {
         // Execute encryption interactively
         let mut child = cmd
             .spawn()
-            .map_err(|e| VaultError::Other(format!("Failed to run GPG: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to run GPG: {e}")))?;
 
         let status = child
             .wait()
-            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {e}")))?;
 
         if !status.success() {
             return Err(VaultError::Other("GPG encryption failed".to_string()));
@@ -113,11 +113,11 @@ impl GpgOperations {
         // Execute decryption interactively
         let mut child = cmd
             .spawn()
-            .map_err(|e| VaultError::Other(format!("Failed to run GPG: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to run GPG: {e}")))?;
 
         let status = child
             .wait()
-            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {e}")))?;
 
         if !status.success() {
             return Err(VaultError::Other("GPG decryption failed".to_string()));
@@ -133,7 +133,7 @@ impl GpgOperations {
         let output = Command::new("gpg")
             .args(["--list-keys", "--with-colons"])
             .output()
-            .map_err(|e| VaultError::Other(format!("Failed to list GPG keys: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to list GPG keys: {e}")))?;
 
         if !output.status.success() {
             return Err(VaultError::Other("Failed to list GPG keys".to_string()));
@@ -169,7 +169,7 @@ impl GpgOperations {
         let backup_path = vault_path.with_extension("md.backup");
 
         fs::copy(vault_path, &backup_path)
-            .map_err(|e| VaultError::Other(format!("Failed to create backup: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("Failed to create backup: {e}")))?;
 
         Ok(backup_path)
     }
