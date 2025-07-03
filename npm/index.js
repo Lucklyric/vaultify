@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Get the path to the binary
-const binaryPath = path.join(__dirname, 'bin', process.platform === 'win32' ? 'vaultify.exe' : 'vaultify-bin');
+const binaryPath = path.join(__dirname, 'bin', process.platform === 'win32' ? 'vaultify.exe' : 'vaultify');
 
 // Check if binary exists
 if (!fs.existsSync(binaryPath)) {
