@@ -486,9 +486,19 @@ impl InteractiveVault {
         io::stdin().read_line(&mut armor_response)?;
         let armor = armor_response.trim().to_lowercase() == "y";
 
-        // Create backup
-        let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
-        println!("Created backup: {}", backup_path.display());
+        // Ask for backup
+        print!("\nCreate backup before encryption? [y/N]: ");
+        io::stdout().flush()?;
+
+        let mut backup_response = String::new();
+        io::stdin().read_line(&mut backup_response)?;
+        let create_backup = backup_response.trim().to_lowercase() == "y";
+
+        // Create backup if requested
+        if create_backup {
+            let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
+            println!("Created backup: {}", backup_path.display());
+        }
 
         // Perform encryption
         let output_path =
