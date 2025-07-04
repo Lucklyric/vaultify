@@ -152,7 +152,7 @@ pub enum Commands {
         armor: bool,
 
         /// Create backup before encryption
-        #[arg(short, long, default_value = "true")]
+        #[arg(short, long, default_value = "false")]
         backup: bool,
     },
 
@@ -537,8 +537,19 @@ impl Cli {
     fn gpg_encrypt(&self, recipient: Option<&str>, armor: bool, backup: bool) -> Result<()> {
         let vault_path = self.get_vault_file()?;
 
+        // Ask about backup interactively if not specified via CLI flag
+        let should_backup = if backup {
+            true
+        } else {
+            print!("Create backup before encryption? [y/N]: ");
+            io::stdout().flush()?;
+            let mut response = String::new();
+            io::stdin().read_line(&mut response)?;
+            response.trim().to_lowercase() == "y"
+        };
+
         // Create backup if requested
-        if backup {
+        if should_backup {
             let backup_path = GpgOperations::backup_vault(&vault_path)?;
             println!("Created backup: {}", backup_path.display());
         }
