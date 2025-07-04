@@ -212,8 +212,13 @@ impl Cli {
                 editor,
                 edit_description,
             } => {
-                self.edit_entry(scope.clone(), description.clone(), *editor, *edit_description)
-                    .await
+                self.edit_entry(
+                    scope.clone(),
+                    description.clone(),
+                    *editor,
+                    *edit_description,
+                )
+                .await
             }
             Commands::Delete { scope, force } => self.delete_entry(scope.clone(), *force),
             Commands::Rename {
@@ -341,13 +346,13 @@ impl Cli {
                 }) {
                     let desc_lines: Vec<&str> = entry.description.lines().collect();
                     let first_line = desc_lines.first().copied().unwrap_or("");
-                    
+
                     if !entry.has_content {
                         println!("{} {} - {}", line, "[empty]".yellow(), first_line);
                     } else {
                         println!("{} - {}", line, first_line);
                     }
-                    
+
                     // Print additional description lines with appropriate indentation
                     if desc_lines.len() > 1 {
                         // Calculate indentation based on tree line
@@ -375,7 +380,7 @@ impl Cli {
                         // Format multiline descriptions
                         let desc_lines: Vec<&str> = entry.description.lines().collect();
                         let first_line = desc_lines.first().copied().unwrap_or("");
-                        
+
                         if entry.has_content {
                             println!("{} - {}", entry.scope.cyan(), first_line);
                         } else {
@@ -386,7 +391,7 @@ impl Cli {
                                 first_line
                             );
                         }
-                        
+
                         // Print additional description lines indented
                         for line in desc_lines.iter().skip(1) {
                             println!("  {}", line);
@@ -629,14 +634,14 @@ impl Cli {
     /// Get multiline description interactively.
     fn get_multiline_description(&self) -> Result<String> {
         println!("Enter description (press Enter twice to finish):");
-        
+
         let mut lines = Vec::new();
         let mut empty_line_count = 0;
-        
+
         loop {
             let mut line = String::new();
             io::stdin().read_line(&mut line)?;
-            
+
             if line.trim().is_empty() {
                 empty_line_count += 1;
                 if empty_line_count >= 2 {
@@ -648,12 +653,12 @@ impl Cli {
                 lines.push(line.trim_end().to_string());
             }
         }
-        
+
         // Remove trailing empty lines
         while lines.last().map(|s| s.is_empty()).unwrap_or(false) {
             lines.pop();
         }
-        
+
         Ok(lines.join("\n"))
     }
 }
