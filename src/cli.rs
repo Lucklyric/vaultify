@@ -50,7 +50,7 @@ pub enum Commands {
     /// Initialize a new vault
     Init {
         /// Force overwrite if vault exists
-        #[arg(short, long)]
+        #[arg(long)]
         force: bool,
     },
 
@@ -159,8 +159,8 @@ pub enum Commands {
         input: Option<PathBuf>,
 
         /// Output file (default: vault.md)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
+        #[arg(short = 'O', long = "output-file")]
+        output_file: Option<PathBuf>,
     },
 }
 
@@ -220,8 +220,8 @@ impl Cli {
                 armor,
                 backup,
             } => self.gpg_encrypt(recipient.as_deref(), *armor, *backup),
-            Commands::GpgDecrypt { input, output } => {
-                self.gpg_decrypt(input.as_deref(), output.as_deref())
+            Commands::GpgDecrypt { input, output_file } => {
+                self.gpg_decrypt(input.as_deref(), output_file.as_deref())
             }
         }
     }
