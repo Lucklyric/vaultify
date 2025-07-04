@@ -59,14 +59,13 @@ impl GpgOperations {
 
         cmd.arg("--output").arg(&output_path).arg(vault_path);
 
-        // Execute encryption interactively
-        let mut child = cmd
-            .spawn()
+        // Execute encryption interactively with inherited stdio
+        let status = cmd
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
             .map_err(|e| VaultError::Other(format!("Failed to run GPG: {e}")))?;
-
-        let status = child
-            .wait()
-            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {e}")))?;
 
         if !status.success() {
             return Err(VaultError::Other("GPG encryption failed".to_string()));
@@ -110,14 +109,13 @@ impl GpgOperations {
             .arg(&output)
             .arg(encrypted_path);
 
-        // Execute decryption interactively
-        let mut child = cmd
-            .spawn()
+        // Execute decryption interactively with inherited stdio
+        let status = cmd
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
             .map_err(|e| VaultError::Other(format!("Failed to run GPG: {e}")))?;
-
-        let status = child
-            .wait()
-            .map_err(|e| VaultError::Other(format!("Failed to wait for GPG: {e}")))?;
 
         if !status.success() {
             return Err(VaultError::Other("GPG decryption failed".to_string()));
