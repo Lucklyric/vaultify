@@ -116,6 +116,10 @@ pub enum Commands {
         /// Use an external editor for secret input
         #[arg(short, long)]
         editor: bool,
+
+        /// Edit description interactively (multiline)
+        #[arg(long)]
+        edit_description: bool,
     },
 
     /// Delete an entry
@@ -206,8 +210,9 @@ impl Cli {
                 scope,
                 description,
                 editor,
+                edit_description,
             } => {
-                self.edit_entry(scope.clone(), description.clone(), *editor)
+                self.edit_entry(scope.clone(), description.clone(), *editor, *edit_description)
                     .await
             }
             Commands::Delete { scope, force } => self.delete_entry(scope.clone(), *force),
@@ -281,11 +286,7 @@ impl Cli {
         let description = if let Some(desc) = description {
             desc
         } else {
-            print!("Description: ");
-            io::stdout().flush()?;
-            let mut desc = String::new();
-            io::stdin().read_line(&mut desc)?;
-            desc.trim().to_string()
+            self.get_multiline_description()?
         };
 
         // Get secret
@@ -329,12 +330,32 @@ impl Cli {
             let tree_lines = utils::format_tree(&scopes);
 
             for line in tree_lines.iter() {
-                // Find the corresponding entry
-                if let Some(entry) = result.entries.iter().find(|e| line.contains(&e.scope)) {
-                    if !entry.has_content {
-                        println!("{} {} - {}", line, "[empty]".yellow(), entry.description);
+                // Find the corresponding entry by checking if the line ends with the last part of the scope
+                if let Some(entry) = result.entries.iter().find(|e| {
+                    let scope_parts: Vec<&str> = e.scope.split('/').collect();
+                    if let Some(last_part) = scope_parts.last() {
+                        line.ends_with(last_part)
                     } else {
-                        println!("{} - {}", line, entry.description);
+                        false
+                    }
+                }) {
+                    let desc_lines: Vec<&str> = entry.description.lines().collect();
+                    let first_line = desc_lines.first().copied().unwrap_or("");
+                    
+                    if !entry.has_content {
+                        println!("{} {} - {}", line, "[empty]".yellow(), first_line);
+                    } else {
+                        println!("{} - {}", line, first_line);
+                    }
+                    
+                    // Print additional description lines with appropriate indentation
+                    if desc_lines.len() > 1 {
+                        // Calculate indentation based on tree line
+                        let indent_len = line.len() + 3; // +3 for " - "
+                        let indent = " ".repeat(indent_len);
+                        for desc_line in desc_lines.iter().skip(1) {
+                            println!("{}{}", indent, desc_line);
+                        }
                     }
                 } else {
                     println!("{line}");
@@ -351,15 +372,24 @@ impl Cli {
                     }
 
                     for entry in &result.entries {
+                        // Format multiline descriptions
+                        let desc_lines: Vec<&str> = entry.description.lines().collect();
+                        let first_line = desc_lines.first().copied().unwrap_or("");
+                        
                         if entry.has_content {
-                            println!("{} - {}", entry.scope.cyan(), entry.description);
+                            println!("{} - {}", entry.scope.cyan(), first_line);
                         } else {
                             println!(
                                 "{} {} - {}",
                                 entry.scope.cyan(),
                                 "[empty]".yellow(),
-                                entry.description
+                                first_line
                             );
+                        }
+                        
+                        // Print additional description lines indented
+                        for line in desc_lines.iter().skip(1) {
+                            println!("  {}", line);
                         }
                     }
                 }
@@ -417,12 +447,20 @@ impl Cli {
         scope: String,
         description: Option<String>,
         editor: bool,
+        edit_description: bool,
     ) -> Result<()> {
         let vault_path = self.get_vault_file()?;
         let ops = VaultOperations::new();
 
         // Get password
         let password = ops.get_password(&vault_path, "Enter vault password", true)?;
+
+        // Get new description if requested
+        let final_description = if edit_description {
+            Some(self.get_multiline_description()?)
+        } else {
+            description
+        };
 
         // Get new secret if editing
         let new_secret = if editor {
@@ -445,7 +483,7 @@ impl Cli {
             &vault_path,
             &scope,
             new_secret.as_deref(),
-            description.as_deref(),
+            final_description.as_deref(),
             &password,
         )?;
 
@@ -586,6 +624,37 @@ impl Cli {
     /// Get secret from external editor (delegates to secure_temp).
     fn get_secret_from_editor(&self) -> Result<String> {
         crate::secure_temp::get_secret_from_editor(None)
+    }
+
+    /// Get multiline description interactively.
+    fn get_multiline_description(&self) -> Result<String> {
+        println!("Enter description (press Enter twice to finish):");
+        
+        let mut lines = Vec::new();
+        let mut empty_line_count = 0;
+        
+        loop {
+            let mut line = String::new();
+            io::stdin().read_line(&mut line)?;
+            
+            if line.trim().is_empty() {
+                empty_line_count += 1;
+                if empty_line_count >= 2 {
+                    break;
+                }
+                lines.push(String::new());
+            } else {
+                empty_line_count = 0;
+                lines.push(line.trim_end().to_string());
+            }
+        }
+        
+        // Remove trailing empty lines
+        while lines.last().map(|s| s.is_empty()).unwrap_or(false) {
+            lines.pop();
+        }
+        
+        Ok(lines.join("\n"))
     }
 }
 
