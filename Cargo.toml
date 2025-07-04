@@ -1,6 +1,6 @@
 [package]
 name = "vaultify"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["vaultify contributors"]
 description = "A secure, file-based secrets vault with interactive CLI"
