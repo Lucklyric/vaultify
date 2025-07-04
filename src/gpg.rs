@@ -46,6 +46,13 @@ impl GpgOperations {
         // Build GPG command
         let mut cmd = Command::new("gpg");
 
+        // Set GPG_TTY environment variable for proper terminal handling
+        if let Ok(tty) = std::env::var("TTY") {
+            cmd.env("GPG_TTY", tty);
+        } else if std::path::Path::new("/dev/tty").exists() {
+            cmd.env("GPG_TTY", "/dev/tty");
+        }
+
         // Always use symmetric encryption if no recipient
         if let Some(recipient) = recipient {
             cmd.arg("--encrypt").arg("--recipient").arg(recipient);

@@ -595,55 +595,8 @@ impl InteractiveVault {
             return Ok(());
         }
 
-        // Ask for recipient (optional)
-        print!("GPG recipient email (leave empty for symmetric encryption): ");
-        io::stdout().flush()?;
-
-        let mut recipient = String::new();
-        io::stdin().read_line(&mut recipient)?;
-        let recipient = recipient.trim();
-        let recipient_opt = if recipient.is_empty() {
-            None
-        } else {
-            Some(recipient)
-        };
-
-        // Ask about backup (default: no)
-        print!("Create backup before encryption? [y/N]: ");
-        io::stdout().flush()?;
-
-        let mut backup_response = String::new();
-        io::stdin().read_line(&mut backup_response)?;
-        let backup = backup_response.trim().to_lowercase() == "y";
-
-        // Ask about ASCII armor (default: no)
-        print!("Use ASCII armor format (.asc)? [y/N]: ");
-        io::stdout().flush()?;
-
-        let mut armor_response = String::new();
-        io::stdin().read_line(&mut armor_response)?;
-        let armor = armor_response.trim().to_lowercase() == "y";
-
-        // Perform encryption
-        if backup {
-            let backup_path = GpgOperations::backup_vault(&self.vault_path)?;
-            println!("Created backup: {}", backup_path.display());
-        }
-
-        let output_path = GpgOperations::encrypt_vault(&self.vault_path, recipient_opt, armor)?;
-
-        success(&format!(
-            "Vault encrypted successfully: {}",
-            output_path.display()
-        ));
-
-        if recipient_opt.is_some() {
-            println!("Encrypted for recipient: {}", recipient);
-        } else {
-            println!("Encrypted with symmetric key (password-based)");
-        }
-
-        Ok(())
+        // Use the existing gpg_encrypt_interactive method
+        self.gpg_encrypt_interactive()
     }
 }
 
