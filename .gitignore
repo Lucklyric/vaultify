@@ -52,6 +52,14 @@ test-vault.md
 vault.md
 .vault.md
 credentials.md
+a.md
+at.md
+*.tmp
+*.test
+vault.md.gpg
+vault.md.asc
+*.gpg
+*.asc
 
 # Build artifacts
 dist/
