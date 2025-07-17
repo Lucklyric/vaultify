@@ -12,7 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 /// Parse a scope path string into components.
 pub fn parse_scope_path(scope: &str) -> Vec<String> {
     scope
-        .split('/')
+        .split('.')
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect()
@@ -20,7 +20,7 @@ pub fn parse_scope_path(scope: &str) -> Vec<String> {
 
 /// Format a scope path as a string.
 pub fn format_scope_path(parts: &[String]) -> String {
-    parts.join("/")
+    parts.join(".")
 }
 
 /// Validate a scope name.
@@ -35,19 +35,31 @@ pub fn validate_scope_name(scope: &str) -> bool {
         return false;
     }
 
+    // Don't allow leading or trailing dots
+    if scope.starts_with('.') || scope.ends_with('.') {
+        return false;
+    }
+
+    // Don't allow consecutive dots
+    if scope.contains("..") {
+        return false;
+    }
+
     // Check each part
-    for part in scope.split('/') {
+    let parts: Vec<&str> = scope.split('.').collect();
+    for part in parts.iter() {
+        // All parts should be non-empty after the above checks
         if part.is_empty() {
-            continue;
+            return false;
         }
 
-        // Don't allow . or .. as entire part
-        if part == "." || part == ".." {
+        // Don't allow . or .. as entire part (already handled by consecutive dots check)
+        if *part == "." || *part == ".." {
             return false;
         }
 
         // First character restrictions
-        if let Some(first) = part.chars().next() {
+        if let Some(first) = (*part).chars().next() {
             if first == '-' || first == '_' {
                 return false;
             }
@@ -62,7 +74,13 @@ pub fn find_vault_file() -> Option<PathBuf> {
     let current_dir = std::env::current_dir().ok()?;
 
     // Check current directory
-    for name in &["vault.md", ".vault.md", "credentials.md"] {
+    for name in &[
+        "vault.toml",
+        ".vault.toml",
+        "credentials.toml",
+        "vault.md",
+        ".vault.md",
+    ] {
         let path = current_dir.join(name);
         if path.exists() {
             return Some(path);
@@ -72,7 +90,13 @@ pub fn find_vault_file() -> Option<PathBuf> {
     // Check parent directories
     let mut dir = current_dir.parent();
     while let Some(parent) = dir {
-        for name in &["vault.md", ".vault.md", "credentials.md"] {
+        for name in &[
+            "vault.toml",
+            ".vault.toml",
+            "credentials.toml",
+            "vault.md",
+            ".vault.md",
+        ] {
             let path = parent.join(name);
             if path.exists() {
                 return Some(path);
@@ -210,12 +234,12 @@ pub fn format_tree(scopes: &[String]) -> Vec<String> {
     let mut last_parts: Vec<String> = Vec::new();
 
     for (i, scope) in scopes.iter().enumerate() {
-        let parts: Vec<&str> = scope.split('/').collect();
+        let parts: Vec<&str> = scope.split('.').collect();
         let level = parts.len() - 1;
         let is_last = i == scopes.len() - 1 || {
             // Check if this is the last item at its level
             if i + 1 < scopes.len() {
-                let next_parts: Vec<&str> = scopes[i + 1].split('/').collect();
+                let next_parts: Vec<&str> = scopes[i + 1].split('.').collect();
                 next_parts.len() <= parts.len() || next_parts[..level] != parts[..level]
             } else {
                 true
@@ -349,33 +373,35 @@ mod tests {
     #[test]
     fn test_parse_scope_path() {
         assert_eq!(
-            parse_scope_path("personal/banking/chase"),
+            parse_scope_path("personal.banking.chase"),
             vec!["personal", "banking", "chase"]
         );
-        assert_eq!(parse_scope_path("/personal/"), vec!["personal"]);
+        assert_eq!(parse_scope_path(".personal."), vec!["personal"]);
         assert_eq!(parse_scope_path(""), Vec::<String>::new());
     }
 
     #[test]
     fn test_validate_scope_name() {
-        assert!(validate_scope_name("personal/banking"));
+        assert!(validate_scope_name("personal.banking"));
         assert!(validate_scope_name("work-stuff"));
         assert!(validate_scope_name("test_123"));
 
         assert!(!validate_scope_name(""));
         assert!(!validate_scope_name("with<angle>"));
         assert!(!validate_scope_name("with|pipe"));
-        assert!(!validate_scope_name("personal/."));
-        assert!(!validate_scope_name("personal/.."));
+        assert!(!validate_scope_name("personal.."));
+        assert!(!validate_scope_name("personal..."));
+        assert!(!validate_scope_name(".personal"));
+        assert!(!validate_scope_name("personal."));
     }
 
     #[test]
     fn test_format_tree() {
         let scopes = vec![
             "personal".to_string(),
-            "personal/banking".to_string(),
-            "personal/banking/chase".to_string(),
-            "personal/email".to_string(),
+            "personal.banking".to_string(),
+            "personal.banking.chase".to_string(),
+            "personal.email".to_string(),
             "work".to_string(),
         ];
 

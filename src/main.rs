@@ -58,7 +58,7 @@ async fn run_interactive() {
             // No vault file found, prompt user to create one
             eprintln!("{}", "No vault file found.".yellow());
 
-            let vault_path = PathBuf::from("vault.md");
+            let vault_path = PathBuf::from("vault.toml");
             let full_path = std::env::current_dir()
                 .unwrap_or_default()
                 .join(&vault_path);
@@ -89,8 +89,9 @@ async fn run_interactive() {
             };
 
             if create {
-                // Create new vault file
-                let content = vaultify::parser::VaultParser::create_root_document();
+                // Create new vault file with TOML format
+                let now = chrono::Utc::now().to_rfc3339();
+                let content = format!("version = \"v0.3\"\ncreated = \"{}\"\n", now);
                 match std::fs::write(&vault_path, content) {
                     Ok(_) => {
                         // Set secure permissions

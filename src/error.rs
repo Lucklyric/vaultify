@@ -48,9 +48,6 @@ pub enum VaultError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Parse error: {0}")]
-    Parse(#[from] crate::parser::ParseError),
-
     #[error("Crypto error: {0}")]
     Crypto(#[from] crate::crypto::CryptoError),
 

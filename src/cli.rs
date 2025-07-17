@@ -20,7 +20,7 @@ pub struct Cli {
         long,
         global = true,
         env = "VAULT_FILE",
-        help = "Path to vault file (default: searches for vault.md)"
+        help = "Path to vault file (default: searches for vault.toml)"
     )]
     pub file: Option<PathBuf>,
 
@@ -56,7 +56,7 @@ pub enum Commands {
 
     /// Add a new secret to the vault
     Add {
-        /// Secret scope (e.g., personal/email/gmail)
+        /// Secret scope (e.g., personal.email.gmail)
         scope: String,
 
         /// Description of the secret
@@ -158,11 +158,11 @@ pub enum Commands {
 
     /// Decrypt GPG-encrypted vault file
     GpgDecrypt {
-        /// Input file (default: vault.md.gpg or vault.md.asc)
+        /// Input file (default: vault.toml.gpg or vault.toml.asc)
         #[arg(short, long)]
         input: Option<PathBuf>,
 
-        /// Output file (default: vault.md)
+        /// Output file (default: vault.toml)
         #[arg(short = 'O', long = "output-file")]
         output_file: Option<PathBuf>,
     },
@@ -241,7 +241,7 @@ impl Cli {
         let vault_path = if let Some(path) = &self.file {
             path.clone()
         } else {
-            PathBuf::from("vault.md")
+            PathBuf::from("vault.toml")
         };
 
         // Check if vault already exists
@@ -259,9 +259,10 @@ impl Cli {
             }
         }
 
-        // Create vault file
-        let content = "# root <!-- vaultify v1 -->\n";
-        fs::write(&vault_path, content)?;
+        // Create vault file with TOML format
+        let content = "version = \"v0.3\"\ncreated = \"{}\"\n";
+        let now = chrono::Utc::now().to_rfc3339();
+        fs::write(&vault_path, content.replace("{}", &now))?;
 
         // Set proper permissions on Unix
         #[cfg(unix)]
@@ -334,36 +335,31 @@ impl Cli {
             let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
             let tree_lines = utils::format_tree(&scopes);
 
-            for line in tree_lines.iter() {
-                // Find the corresponding entry by checking if the line ends with the last part of the scope
-                if let Some(entry) = result.entries.iter().find(|e| {
-                    let scope_parts: Vec<&str> = e.scope.split('/').collect();
-                    if let Some(last_part) = scope_parts.last() {
-                        line.ends_with(last_part)
-                    } else {
-                        false
-                    }
-                }) {
-                    let desc_lines: Vec<&str> = entry.description.lines().collect();
-                    let first_line = desc_lines.first().copied().unwrap_or("");
+            for (i, line) in tree_lines.iter().enumerate() {
+                // Find the corresponding entry by matching the scope from the original scopes list
+                if i < scopes.len() {
+                    if let Some(entry) = result.entries.iter().find(|e| e.scope == scopes[i]) {
+                        let desc_lines: Vec<&str> = entry.description.lines().collect();
+                        let first_line = desc_lines.first().copied().unwrap_or("");
 
-                    if !entry.has_content {
-                        println!("{} {} - {}", line, "[empty]".yellow(), first_line);
-                    } else {
-                        println!("{} - {}", line, first_line);
-                    }
-
-                    // Print additional description lines with appropriate indentation
-                    if desc_lines.len() > 1 {
-                        // Calculate indentation based on tree line
-                        let indent_len = line.len() + 3; // +3 for " - "
-                        let indent = " ".repeat(indent_len);
-                        for desc_line in desc_lines.iter().skip(1) {
-                            println!("{}{}", indent, desc_line);
+                        if !entry.has_content {
+                            println!("{} {} - {}", line, "[empty]".yellow(), first_line);
+                        } else {
+                            println!("{} - {}", line, first_line);
                         }
+
+                        // Print additional description lines with appropriate indentation
+                        if desc_lines.len() > 1 {
+                            // Calculate indentation based on tree line
+                            let indent_len = line.len() + 3; // +3 for " - "
+                            let indent = " ".repeat(indent_len);
+                            for desc_line in desc_lines.iter().skip(1) {
+                                println!("{}{}", indent, desc_line);
+                            }
+                        }
+                    } else {
+                        println!("{line}");
                     }
-                } else {
-                    println!("{line}");
                 }
             }
         } else {
@@ -579,8 +575,8 @@ impl Cli {
         } else {
             // Try to find encrypted vault
             let vault_path = self.get_vault_file()?;
-            let gpg_path = vault_path.with_extension("md.gpg");
-            let asc_path = vault_path.with_extension("md.asc");
+            let gpg_path = vault_path.with_extension("toml.gpg");
+            let asc_path = vault_path.with_extension("toml.asc");
 
             if gpg_path.exists() {
                 gpg_path
@@ -588,7 +584,7 @@ impl Cli {
                 asc_path
             } else {
                 return Err(VaultError::Other(
-                    "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string(),
+                    "No encrypted vault file found (vault.toml.gpg or vault.toml.asc)".to_string(),
                 ));
             }
         };
@@ -680,16 +676,18 @@ mod tests {
 
     #[test]
     fn test_validate_scope_name() {
-        assert!(utils::validate_scope_name("personal/email"));
-        assert!(utils::validate_scope_name("work/vpn"));
+        assert!(utils::validate_scope_name("personal.email"));
+        assert!(utils::validate_scope_name("work.vpn"));
         assert!(!utils::validate_scope_name(""));
-        assert!(!utils::validate_scope_name("personal/."));
-        assert!(!utils::validate_scope_name("personal/.."));
+        assert!(!utils::validate_scope_name("personal.."));
+        assert!(!utils::validate_scope_name("personal..."));
+        assert!(!utils::validate_scope_name(".personal"));
+        assert!(!utils::validate_scope_name("personal."));
     }
 
     #[test]
     fn test_parse_scope_path() {
-        let parts = utils::parse_scope_path("personal/email/gmail");
+        let parts = utils::parse_scope_path("personal.email.gmail");
         assert_eq!(parts, vec!["personal", "email", "gmail"]);
     }
 }

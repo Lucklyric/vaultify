@@ -3,7 +3,6 @@
 use crate::crypto::VaultCrypto;
 use crate::error::{Result, VaultError};
 use crate::models::{VaultDocument, VaultEntry};
-use crate::parser::VaultParser;
 use crate::toml_parser::TomlParser;
 use crate::utils;
 use std::collections::HashMap;
@@ -12,8 +11,7 @@ use std::path::Path;
 /// Service for vault operations.
 pub struct VaultService {
     crypto: VaultCrypto,
-    markdown_parser: VaultParser,
-    toml_parser: TomlParser,
+    parser: TomlParser,
 }
 
 impl Default for VaultService {
@@ -27,8 +25,7 @@ impl VaultService {
     pub fn new() -> Self {
         Self {
             crypto: VaultCrypto::new(),
-            markdown_parser: VaultParser::new(),
-            toml_parser: TomlParser::new(),
+            parser: TomlParser::new(),
         }
     }
 
@@ -37,14 +34,8 @@ impl VaultService {
         // Read file content
         let content = std::fs::read_to_string(path).map_err(VaultError::Io)?;
 
-        // Detect format
-        let mut doc = if self.is_toml_format(&content) {
-            self.toml_parser.parse(&content)?
-        } else {
-            self.markdown_parser
-                .parse(&content)
-                .map_err(|e| VaultError::Other(e.to_string()))?
-        };
+        // Parse TOML format
+        let mut doc = self.parser.parse(&content)?;
 
         // Set file path
         doc.file_path = Some(path.to_path_buf());
@@ -53,26 +44,9 @@ impl VaultService {
 
     /// Save a vault document to file.
     pub fn save_vault(&self, doc: &VaultDocument, path: &Path) -> Result<()> {
-        // Check if this is a TOML file by extension or existing content
-        let is_toml = if path.exists() {
-            let content = std::fs::read_to_string(path).map_err(VaultError::Io)?;
-            self.is_toml_format(&content)
-        } else {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("toml"))
-                .unwrap_or(false)
-        };
-
-        if is_toml {
-            // Format as TOML and save
-            let content = self.toml_parser.format(doc);
-            std::fs::write(path, content).map_err(VaultError::Io)?;
-        } else {
-            // Use existing Markdown save
-            doc.save(path).map_err(VaultError::Io)?;
-        }
-
+        // Format as TOML and save
+        let content = self.parser.format(doc);
+        std::fs::write(path, content).map_err(VaultError::Io)?;
         Ok(())
     }
 
@@ -104,12 +78,9 @@ impl VaultService {
         // Create new entry
         let entry = VaultEntry {
             scope_path: scope_parts.clone(),
-            heading_level: (scope_parts.len() + 1) as u8, // +1 because # root is level 1
             description,
             encrypted_content,
             salt: Some(salt),
-            start_line: 0,
-            end_line: 0,
             custom_fields: HashMap::new(),
         };
 
@@ -215,7 +186,6 @@ impl VaultService {
 
         // Update scope
         entry.scope_path = new_scope_parts.clone();
-        entry.heading_level = (new_scope_parts.len() + 1) as u8; // +1 because # root is level 1
 
         Ok(())
     }
@@ -302,30 +272,6 @@ impl VaultService {
             "entries": entries,
         })
     }
-
-    /// Detect if content is TOML format.
-    fn is_toml_format(&self, content: &str) -> bool {
-        // Skip leading whitespace and comments
-        let trimmed = content.trim_start();
-
-        // Check for TOML indicators
-        if trimmed.starts_with('[') || trimmed.contains(" = ") {
-            return true;
-        }
-
-        // Check for version field (TOML format)
-        if trimmed.starts_with("version = ") {
-            return true;
-        }
-
-        // Check for Markdown format indicators
-        if trimmed.starts_with("# ") || trimmed.contains("<!-- vaultify") {
-            return false;
-        }
-
-        // Default to Markdown for backward compatibility
-        false
-    }
 }
 
 #[cfg(test)]
@@ -343,7 +289,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "test/entry".to_string(),
+                "test.entry".to_string(),
                 "Test entry".to_string(),
                 secret.to_string(),
                 password,
@@ -369,7 +315,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "personal/email".to_string(),
+                "personal.email".to_string(),
                 "Personal email account".to_string(),
                 "secret1".to_string(),
                 password,
@@ -379,7 +325,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "work/email".to_string(),
+                "work.email".to_string(),
                 "Work email account".to_string(),
                 "secret2".to_string(),
                 password,
@@ -389,7 +335,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "personal/banking".to_string(),
+                "personal.banking".to_string(),
                 "Banking credentials".to_string(),
                 "secret3".to_string(),
                 password,
@@ -419,7 +365,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "old/path".to_string(),
+                "old.path".to_string(),
                 "Test entry".to_string(),
                 "secret".to_string(),
                 password,
@@ -431,7 +377,7 @@ mod tests {
             .rename_entry(
                 &mut doc,
                 &["old".to_string(), "path".to_string()],
-                "new/path".to_string(),
+                "new.path".to_string(),
             )
             .unwrap();
 
