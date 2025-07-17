@@ -74,8 +74,7 @@ impl TomlParser {
         // Process all table entries recursively
         self.process_tables(&table, &[], &mut entries, &mut processed_keys)?;
 
-        // Sort entries by scope path for consistent ordering
-        entries.sort_by(|a, b| a.scope_path.cmp(&b.scope_path));
+        // Preserve original insertion order - no sorting
 
         Ok(VaultDocument {
             entries,
@@ -94,49 +93,59 @@ impl TomlParser {
 
     /// Format a VaultDocument as TOML.
     pub fn format(&self, doc: &VaultDocument) -> String {
-        let mut root = toml::Table::new();
+        // Build hierarchical structure for proper TOML dotted keys
+        let mut lines = Vec::new();
 
-        // Add metadata
-        root.insert(
-            "version".to_string(),
-            toml::Value::String(self.current_version.to_string()),
-        );
-
-        // Get current timestamp
+        // Add metadata at the top
+        lines.push(format!("version = \"{}\"", self.current_version));
         let now = chrono::Utc::now().to_rfc3339();
-        root.insert("modified".to_string(), toml::Value::String(now));
+        lines.push(format!("modified = \"{}\"", now));
+        lines.push(String::new()); // blank line
 
-        // Add entries
-        for entry in &doc.entries {
-            let key = entry.scope_path.join(".");
-            let mut entry_table = toml::Table::new();
+        // Preserve exact file order - no sorting at all
+        // New entries are added to the end of their group naturally during parsing
+        let sorted_entries = &doc.entries;
 
-            // Core fields
-            entry_table.insert(
-                "description".to_string(),
-                toml::Value::String(entry.description.clone()),
-            );
-            entry_table.insert(
-                "encrypted".to_string(),
-                toml::Value::String(entry.encrypted_content.clone()),
-            );
+        // Format each entry with proper TOML dotted key notation
+        for entry in sorted_entries {
+            // Skip empty parent entries that only exist for hierarchy
+            if entry.encrypted_content.is_empty() && entry.description.ends_with(" secrets") {
+                continue;
+            }
 
+            // Create the dotted key section header
+            let section_key = entry.scope_path.join(".");
+            lines.push(format!("[{}]", section_key));
+
+            // Add fields
+            lines.push(format!(
+                "description = \"{}\"",
+                escape_toml_string(&entry.description)
+            ));
+
+            // Always include encrypted field
+            if !entry.encrypted_content.is_empty() {
+                lines.push(format!("encrypted = \"{}\"", entry.encrypted_content));
+            } else {
+                lines.push("encrypted = \"\"".to_string());
+            }
+
+            // Always include salt field for consistency
             if let Some(salt) = &entry.salt {
-                entry_table.insert(
-                    "salt".to_string(),
-                    toml::Value::String(VaultCrypto::encode_salt(salt)),
-                );
+                lines.push(format!("salt = \"{}\"", VaultCrypto::encode_salt(salt)));
+            } else {
+                lines.push("salt = \"\"".to_string());
             }
 
-            // Custom fields
+            // Add custom fields
             for (k, v) in &entry.custom_fields {
-                entry_table.insert(k.clone(), v.clone());
+                lines.push(format!("{} = {}", k, format_toml_value(v)));
             }
 
-            root.insert(key, toml::Value::Table(entry_table));
+            lines.push(String::new()); // blank line between entries
         }
 
-        toml::to_string_pretty(&root).unwrap_or_default()
+        lines.join("\n")
     }
 
     /// Update an entry preserving custom fields.
@@ -147,7 +156,7 @@ impl TomlParser {
     ) -> Result<()> {
         let entry = doc
             .find_entry_mut(scope_path)
-            .ok_or_else(|| VaultError::EntryNotFound(scope_path.join("/")))?;
+            .ok_or_else(|| VaultError::EntryNotFound(scope_path.join(".")))?;
 
         // Update only specified fields
         for (key, value) in updates {
@@ -214,12 +223,9 @@ impl TomlParser {
                         if !processed_keys.contains(&parent_key) {
                             let parent_entry = VaultEntry {
                                 scope_path: parent_path.clone(),
-                                heading_level: 0,
-                                description: format!("{} secrets", parent_path.join("/")),
+                                description: format!("{} secrets", parent_path.join(".")),
                                 encrypted_content: String::new(),
                                 salt: None,
-                                start_line: 0,
-                                end_line: 0,
                                 custom_fields: HashMap::new(),
                             };
                             entries.push(parent_entry);
@@ -231,14 +237,11 @@ impl TomlParser {
                     let toml_entry = extract_toml_entry(nested_table)?;
                     let entry = VaultEntry {
                         scope_path: scope_parts.clone(),
-                        heading_level: 0,
                         description: toml_entry.description,
                         encrypted_content: toml_entry.encrypted,
                         salt: toml_entry
                             .salt
                             .and_then(|s| VaultCrypto::decode_salt(&s).ok()),
-                        start_line: 0,
-                        end_line: 0,
                         custom_fields: toml_entry.custom_fields,
                     };
                     entries.push(entry);
@@ -261,6 +264,31 @@ fn parse_scope_key(key: &str) -> Vec<String> {
     key.split('.').map(|s| s.to_string()).collect()
 }
 
+/// Escape a string for TOML format
+fn escape_toml_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+/// Format a TOML value for output
+fn format_toml_value(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => format!("\"{}\"", escape_toml_string(s)),
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Float(f) => f.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        toml::Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(format_toml_value).collect();
+            format!("[{}]", items.join(", "))
+        }
+        toml::Value::Datetime(dt) => format!("\"{}\"", dt),
+        toml::Value::Table(_) => "{ ... }".to_string(), // Shouldn't happen for custom fields
+    }
+}
+
 /// Extract TomlEntry from a table
 fn extract_toml_entry(table: &Table) -> Result<TomlEntry> {
     let description = table
@@ -280,11 +308,14 @@ fn extract_toml_entry(table: &Table) -> Result<TomlEntry> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    // Collect custom fields
+    // Collect custom fields (excluding nested tables)
     let mut custom_fields = HashMap::new();
     for (k, v) in table {
         if k != "description" && k != "encrypted" && k != "salt" {
-            custom_fields.insert(k.clone(), v.clone());
+            // Skip nested tables - they are separate vault entries
+            if !v.is_table() {
+                custom_fields.insert(k.clone(), v.clone());
+            }
         }
     }
 
@@ -322,6 +353,64 @@ salt = "YmFzZTY0X3NhbHQ="
         assert_eq!(doc.entries.len(), 2);
         assert_eq!(doc.entries[0].scope_path, vec!["work"]);
         assert_eq!(doc.entries[1].scope_path, vec!["work", "email"]);
+    }
+
+    #[test]
+    fn test_insertion_order_preservation() {
+        let parser = TomlParser::new();
+
+        // Create entries in a specific order
+        let doc = VaultDocument {
+            entries: vec![
+                VaultEntry {
+                    scope_path: vec!["a".to_string()],
+                    description: "Root A".to_string(),
+                    encrypted_content: String::new(),
+                    salt: None,
+                    custom_fields: HashMap::new(),
+                },
+                VaultEntry {
+                    scope_path: vec!["a".to_string(), "a3".to_string()],
+                    description: "Third child".to_string(),
+                    encrypted_content: "encrypted3".to_string(),
+                    salt: Some(vec![3, 3, 3]),
+                    custom_fields: HashMap::new(),
+                },
+                VaultEntry {
+                    scope_path: vec!["a".to_string(), "a1".to_string()],
+                    description: "First child".to_string(),
+                    encrypted_content: "encrypted1".to_string(),
+                    salt: Some(vec![1, 1, 1]),
+                    custom_fields: HashMap::new(),
+                },
+                VaultEntry {
+                    scope_path: vec!["a".to_string(), "a2".to_string()],
+                    description: "Second child".to_string(),
+                    encrypted_content: "encrypted2".to_string(),
+                    salt: Some(vec![2, 2, 2]),
+                    custom_fields: HashMap::new(),
+                },
+            ],
+            raw_lines: vec![],
+            file_path: None,
+        };
+
+        let formatted = parser.format(&doc);
+
+        // Find the positions of each entry in the output
+        let a_pos = formatted.find("[a]").expect("Should find [a]");
+        let a1_pos = formatted.find("[a.a1]").expect("Should find [a.a1]");
+        let a2_pos = formatted.find("[a.a2]").expect("Should find [a.a2]");
+        let a3_pos = formatted.find("[a.a3]").expect("Should find [a.a3]");
+
+        // Verify parent comes first
+        assert!(a_pos < a1_pos);
+        assert!(a_pos < a2_pos);
+        assert!(a_pos < a3_pos);
+
+        // Verify children maintain exact insertion order (a3, a1, a2)
+        assert!(a3_pos < a1_pos, "a3 should come before a1 (insertion order)");
+        assert!(a1_pos < a2_pos, "a1 should come before a2 (insertion order)");
     }
 
     #[test]
@@ -396,12 +485,9 @@ tags = ["finance", "important"]
 
         let entry = VaultEntry {
             scope_path: vec!["work".to_string(), "email".to_string()],
-            heading_level: 0,
             description: "Work email".to_string(),
             encrypted_content: "encrypted".to_string(),
             salt: Some(b"salt".to_vec()),
-            start_line: 0,
-            end_line: 0,
             custom_fields,
         };
 
@@ -411,7 +497,7 @@ tags = ["finance", "important"]
         let formatted = parser.format(&doc);
 
         assert!(formatted.contains("version = \"v0.3\""));
-        assert!(formatted.contains("[\"work.email\"]")); // TOML quotes keys with dots
+        assert!(formatted.contains("[work.email]")); // Now using native TOML dotted notation
         assert!(formatted.contains("description = \"Work email\""));
         assert!(formatted.contains("expires = \"2025-12-31\""));
     }
