@@ -1,6 +1,7 @@
 //! Data models for the credential vault.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Represents a single entry in the vault.
@@ -8,18 +9,21 @@ use std::path::PathBuf;
 pub struct VaultEntry {
     /// Scope path, e.g., ("personal", "banking", "chase")
     pub scope_path: Vec<String>,
-    /// Markdown heading depth (1-6)
+    /// Markdown heading depth (1-6) - used for Markdown format
     pub heading_level: u8,
     /// Plain text description
     pub description: String,
     /// Base64 encrypted secret
     pub encrypted_content: String,
-    /// Starting line in file (0-based)
+    /// Starting line in file (0-based) - used for Markdown format
     pub start_line: usize,
-    /// Ending line in file (0-based)
+    /// Ending line in file (0-based) - used for Markdown format
     pub end_line: usize,
     /// Per-item salt for key derivation
     pub salt: Option<Vec<u8>>,
+    /// Custom fields for extensibility (TOML format)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub custom_fields: HashMap<String, toml::Value>,
 }
 
 impl VaultEntry {
@@ -168,10 +172,10 @@ impl VaultDocument {
     pub fn save(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
         use std::fs;
         let content = self.raw_lines.join("");
-        
+
         // Write the file
         fs::write(path, &content)?;
-        
+
         // Post-save validation: try to parse the file we just wrote
         use crate::parser::VaultParser;
         let parser = VaultParser::new();
@@ -179,15 +183,18 @@ impl VaultDocument {
             Ok(parsed_doc) => {
                 // Verify we have the same number of entries
                 if parsed_doc.entries.len() != self.entries.len() {
-                    eprintln!("Warning: Saved vault has {} entries but expected {}", 
-                             parsed_doc.entries.len(), self.entries.len());
+                    eprintln!(
+                        "Warning: Saved vault has {} entries but expected {}",
+                        parsed_doc.entries.len(),
+                        self.entries.len()
+                    );
                 }
             }
             Err(e) => {
                 eprintln!("Warning: Saved vault file may be corrupted: {}", e);
             }
         }
-        
+
         Ok(())
     }
 }
@@ -206,6 +213,7 @@ mod tests {
             start_line: 0,
             end_line: 5,
             salt: None,
+            custom_fields: HashMap::new(),
         };
         assert_eq!(entry.scope_string(), "personal/banking");
     }
@@ -220,6 +228,7 @@ mod tests {
             start_line: 0,
             end_line: 5,
             salt: None,
+            custom_fields: HashMap::new(),
         };
 
         let child = VaultEntry {
@@ -230,6 +239,7 @@ mod tests {
             start_line: 6,
             end_line: 10,
             salt: None,
+            custom_fields: HashMap::new(),
         };
 
         assert!(parent.is_parent_of(&child));

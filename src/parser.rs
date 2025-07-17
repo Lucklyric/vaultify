@@ -3,6 +3,7 @@
 use crate::crypto::VaultCrypto;
 use crate::models::{VaultDocument, VaultEntry};
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::Path;
 use thiserror::Error;
 
@@ -215,6 +216,7 @@ impl VaultParser {
             start_line: start_idx,
             end_line: current_idx.saturating_sub(1),
             salt: entry_salt,
+            custom_fields: HashMap::new(),
         };
 
         Ok(Some((entry, current_idx)))
@@ -324,6 +326,7 @@ impl VaultParser {
                     start_line: 0, // Will be set during insertion
                     end_line: 0,
                     salt: None,
+                    custom_fields: HashMap::new(),
                 };
                 ancestors_to_create.push(ancestor);
             }
@@ -421,6 +424,7 @@ Test
             salt: Some(b"test_salt_bytes".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
 
         let parser = VaultParser::new();
@@ -452,6 +456,7 @@ Test
             salt: Some(b"work_salt".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry1).unwrap();
 
@@ -464,6 +469,7 @@ Test
             salt: Some(b"personal_salt".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry2).unwrap();
 
@@ -476,6 +482,7 @@ Test
             salt: Some(b"finance_salt".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry3).unwrap();
 
@@ -588,6 +595,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"salt1".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry1).unwrap();
 
@@ -611,6 +619,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"salt2".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
 
         // Reload and add to ensure we test the full cycle
@@ -645,6 +654,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: None,
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry1).unwrap();
 
@@ -656,6 +666,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: None,
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry2).unwrap();
 
@@ -687,6 +698,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"salt1".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry1).unwrap();
 
@@ -698,6 +710,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"salt2".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry2).unwrap();
 
@@ -709,6 +722,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"salt3".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(entry3).unwrap();
 
@@ -742,6 +756,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
                 salt: Some(format!("salt{}", i).as_bytes().to_vec()),
                 start_line: 0,
                 end_line: 0,
+                custom_fields: HashMap::new(),
             };
             doc.add_entry(entry).unwrap();
         }
@@ -780,6 +795,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: None,
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(work_root).unwrap();
 
@@ -792,6 +808,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"work_email_salt".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(work_email).unwrap();
 
@@ -804,6 +821,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: None,
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(personal_root).unwrap();
 
@@ -816,6 +834,7 @@ ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
             salt: Some(b"bank_salt".to_vec()),
             start_line: 0,
             end_line: 0,
+            custom_fields: HashMap::new(),
         };
         doc.add_entry(personal_bank).unwrap();
 
