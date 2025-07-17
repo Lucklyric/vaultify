@@ -68,7 +68,7 @@ impl VaultService {
         // Create new entry
         let entry = VaultEntry {
             scope_path: scope_parts.clone(),
-            heading_level: scope_parts.len() as u8,
+            heading_level: (scope_parts.len() + 1) as u8, // +1 because # root is level 1
             description,
             encrypted_content,
             salt: Some(salt),
@@ -178,7 +178,7 @@ impl VaultService {
 
         // Update scope
         entry.scope_path = new_scope_parts.clone();
-        entry.heading_level = new_scope_parts.len() as u8;
+        entry.heading_level = (new_scope_parts.len() + 1) as u8; // +1 because # root is level 1
 
         Ok(())
     }

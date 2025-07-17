@@ -222,10 +222,19 @@ impl VaultParser {
 
     /// Format a vault entry as markdown lines.
     pub fn format_entry(&self, entry: &VaultEntry) -> Vec<String> {
+        self.format_entry_with_context(entry, false)
+    }
+
+    /// Format a vault entry as markdown lines with context about position.
+    pub fn format_entry_with_context(
+        &self,
+        entry: &VaultEntry,
+        is_first_entry: bool,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
 
-        // Add blank line before heading (except for root)
-        if entry.heading_level > 1 {
+        // Add blank line before heading (except for the first entry after root)
+        if entry.heading_level > 1 && !is_first_entry {
             lines.push("\n".to_string());
         }
 
@@ -309,7 +318,7 @@ impl VaultParser {
                 // Create ancestor entry
                 let ancestor = VaultEntry {
                     scope_path: ancestor_path.to_vec(),
-                    heading_level: ancestor_path.len() as u8,
+                    heading_level: (ancestor_path.len() + 1) as u8, // +1 because # root is level 1
                     description: format!("{} secrets", ancestor_path.join("/")),
                     encrypted_content: String::new(),
                     start_line: 0, // Will be set during insertion
@@ -406,7 +415,7 @@ Test
     fn test_format_entry() {
         let entry = VaultEntry {
             scope_path: vec!["test".to_string(), "item".to_string()],
-            heading_level: 2,
+            heading_level: 3, // Should be 3 for nested entries (test/item)
             description: "Test entry".to_string(),
             encrypted_content: "encrypted_data".to_string(),
             salt: Some(b"test_salt_bytes".to_vec()),
@@ -421,5 +430,415 @@ Test
         assert!(content.contains("## test/item"));
         assert!(content.contains("salt="));
         assert!(content.contains("encrypted_data"));
+    }
+
+    #[test]
+    fn test_multiple_root_entries_save_reload() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_vault.md");
+
+        // Create a vault with multiple root entries
+        let mut doc = VaultDocument::new();
+
+        // Add first root entry
+        let entry1 = VaultEntry {
+            scope_path: vec!["work".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Work credentials".to_string(),
+            encrypted_content: "encrypted_work_data".to_string(),
+            salt: Some(b"work_salt".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry1).unwrap();
+
+        // Add second root entry
+        let entry2 = VaultEntry {
+            scope_path: vec!["personal".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Personal accounts".to_string(),
+            encrypted_content: "encrypted_personal_data".to_string(),
+            salt: Some(b"personal_salt".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry2).unwrap();
+
+        // Add third root entry
+        let entry3 = VaultEntry {
+            scope_path: vec!["finance".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Financial accounts".to_string(),
+            encrypted_content: "encrypted_finance_data".to_string(),
+            salt: Some(b"finance_salt".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry3).unwrap();
+
+        // Save the document
+        doc.save(&vault_path).unwrap();
+
+        // Print the saved content for debugging
+        let saved_content = std::fs::read_to_string(&vault_path).unwrap();
+        println!("Saved vault content:\n{}", saved_content);
+
+        // Reload the document
+        let reloaded_doc = parser.parse_file(&vault_path).unwrap();
+
+        // Verify all entries were preserved
+        assert_eq!(reloaded_doc.entries.len(), 3);
+
+        // Verify each entry's data
+        let work_entry = reloaded_doc.find_entry(&["work".to_string()]).unwrap();
+        assert_eq!(work_entry.description, "Work credentials");
+        assert_eq!(work_entry.encrypted_content, "encrypted_work_data");
+
+        let personal_entry = reloaded_doc.find_entry(&["personal".to_string()]).unwrap();
+        assert_eq!(personal_entry.description, "Personal accounts");
+        assert_eq!(personal_entry.encrypted_content, "encrypted_personal_data");
+
+        let finance_entry = reloaded_doc.find_entry(&["finance".to_string()]).unwrap();
+        assert_eq!(finance_entry.description, "Financial accounts");
+        assert_eq!(finance_entry.encrypted_content, "encrypted_finance_data");
+    }
+
+    #[test]
+    fn test_multiple_root_entries_edge_cases() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_edge_cases.md");
+
+        // Create vault content manually to test specific formatting issues
+        let vault_content = r#"# root <!-- vaultify v1 -->
+
+## work
+<description/>
+Work stuff
+</description>
+<encrypted salt="YmFzZTY0X3NhbHQ=">
+YmFzZTY0X2VuY3J5cHRlZF9kYXRh
+</encrypted>
+
+## personal
+<description/>
+Personal items
+</description>
+<encrypted salt="YW5vdGhlcl9zYWx0">
+YW5vdGhlcl9lbmNyeXB0ZWRfZGF0YQ==
+</encrypted>
+
+## finance
+<description/>
+Financial data
+</description>
+<encrypted salt="Zmlucy1YbHQ=">
+ZmluYW5jZV9lbmNyeXB0ZWRfZGF0YQ==
+</encrypted>
+"#;
+
+        // Write the vault content
+        std::fs::write(&vault_path, vault_content).unwrap();
+
+        // Parse it
+        let doc = parser.parse_file(&vault_path).unwrap();
+        assert_eq!(doc.entries.len(), 3);
+
+        // Now save it again
+        doc.save(&vault_path).unwrap();
+
+        // Read the saved content
+        let saved_content = std::fs::read_to_string(&vault_path).unwrap();
+        println!("After re-save:\n{}", saved_content);
+
+        // Try to parse again
+        let reloaded_doc = parser.parse_file(&vault_path).unwrap();
+        assert_eq!(reloaded_doc.entries.len(), 3);
+
+        // Verify content integrity
+        for (original, reloaded) in doc.entries.iter().zip(reloaded_doc.entries.iter()) {
+            assert_eq!(original.scope_path, reloaded.scope_path);
+            assert_eq!(original.description, reloaded.description);
+            assert_eq!(original.encrypted_content, reloaded.encrypted_content);
+        }
+    }
+
+    #[test]
+    fn test_blank_line_formatting_bug() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_blank_lines.md");
+
+        // Start with an empty vault
+        let mut doc = VaultDocument::new();
+
+        // Add first root entry - this should NOT have a blank line before it
+        let entry1 = VaultEntry {
+            scope_path: vec!["first".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "First entry".to_string(),
+            encrypted_content: "data1".to_string(),
+            salt: Some(b"salt1".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry1).unwrap();
+
+        // Check the formatting
+        doc.save(&vault_path).unwrap();
+        let content1 = std::fs::read_to_string(&vault_path).unwrap();
+        println!("After first entry:\n{}", content1);
+
+        // The first root entry should NOT have a blank line after the root header
+        assert!(
+            !content1.contains("# root <!-- vaultify v1 -->\n\n\n"),
+            "First root entry should not have double blank line"
+        );
+
+        // Add second root entry
+        let entry2 = VaultEntry {
+            scope_path: vec!["second".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Second entry".to_string(),
+            encrypted_content: "data2".to_string(),
+            salt: Some(b"salt2".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+
+        // Reload and add to ensure we test the full cycle
+        let mut doc2 = parser.parse_file(&vault_path).unwrap();
+        doc2.add_entry(entry2).unwrap();
+        doc2.save(&vault_path).unwrap();
+
+        let content2 = std::fs::read_to_string(&vault_path).unwrap();
+        println!("After second entry:\n{}", content2);
+
+        // Parse again to verify
+        let final_doc = parser.parse_file(&vault_path).unwrap();
+        assert_eq!(final_doc.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_root_entries() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_empty_roots.md");
+
+        let mut doc = VaultDocument::new();
+
+        // Add empty root entries (no encrypted content)
+        let entry1 = VaultEntry {
+            scope_path: vec!["empty1".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Empty container 1".to_string(),
+            encrypted_content: String::new(),
+            salt: None,
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry1).unwrap();
+
+        let entry2 = VaultEntry {
+            scope_path: vec!["empty2".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Empty container 2".to_string(),
+            encrypted_content: String::new(),
+            salt: None,
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry2).unwrap();
+
+        // Save and reload
+        doc.save(&vault_path).unwrap();
+        let reloaded = parser.parse_file(&vault_path).unwrap();
+
+        assert_eq!(reloaded.entries.len(), 2);
+        assert_eq!(reloaded.entries[0].encrypted_content, "");
+        assert_eq!(reloaded.entries[1].encrypted_content, "");
+    }
+
+    #[test]
+    fn test_special_characters_in_scope_names() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_special_chars.md");
+
+        let mut doc = VaultDocument::new();
+
+        // Add entries with special characters
+        let entry1 = VaultEntry {
+            scope_path: vec!["work-2024".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Work with dash".to_string(),
+            encrypted_content: "data1".to_string(),
+            salt: Some(b"salt1".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry1).unwrap();
+
+        let entry2 = VaultEntry {
+            scope_path: vec!["personal_backup".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Personal with underscore".to_string(),
+            encrypted_content: "data2".to_string(),
+            salt: Some(b"salt2".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry2).unwrap();
+
+        let entry3 = VaultEntry {
+            scope_path: vec!["email@domain".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Email with at sign".to_string(),
+            encrypted_content: "data3".to_string(),
+            salt: Some(b"salt3".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(entry3).unwrap();
+
+        // Save and reload
+        doc.save(&vault_path).unwrap();
+        let reloaded = parser.parse_file(&vault_path).unwrap();
+
+        assert_eq!(reloaded.entries.len(), 3);
+        assert_eq!(reloaded.entries[0].scope_path[0], "work-2024");
+        assert_eq!(reloaded.entries[1].scope_path[0], "personal_backup");
+        assert_eq!(reloaded.entries[2].scope_path[0], "email@domain");
+    }
+
+    #[test]
+    fn test_many_root_entries() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_many_roots.md");
+
+        let mut doc = VaultDocument::new();
+
+        // Add 10 root entries
+        for i in 0..10 {
+            let entry = VaultEntry {
+                scope_path: vec![format!("root{}", i)],
+                heading_level: 2, // Should be 2 for root-level entries
+                description: format!("Root entry {}", i),
+                encrypted_content: format!("data{}", i),
+                salt: Some(format!("salt{}", i).as_bytes().to_vec()),
+                start_line: 0,
+                end_line: 0,
+            };
+            doc.add_entry(entry).unwrap();
+        }
+
+        // Save and reload multiple times to test stability
+        for _ in 0..3 {
+            doc.save(&vault_path).unwrap();
+            doc = parser.parse_file(&vault_path).unwrap();
+        }
+
+        // Verify all entries preserved
+        assert_eq!(doc.entries.len(), 10);
+        for i in 0..10 {
+            assert_eq!(doc.entries[i].scope_path[0], format!("root{}", i));
+            assert_eq!(doc.entries[i].encrypted_content, format!("data{}", i));
+        }
+    }
+
+    #[test]
+    fn test_root_entries_with_children() {
+        use tempfile::TempDir;
+
+        let parser = VaultParser::new();
+        let temp_dir = TempDir::new().unwrap();
+        let vault_path = temp_dir.path().join("test_vault_nested.md");
+
+        // Create a vault with root entries that have children
+        let mut doc = VaultDocument::new();
+
+        // Add first root entry
+        let work_root = VaultEntry {
+            scope_path: vec!["work".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Work credentials".to_string(),
+            encrypted_content: String::new(),
+            salt: None,
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(work_root).unwrap();
+
+        // Add child of work
+        let work_email = VaultEntry {
+            scope_path: vec!["work".to_string(), "email".to_string()],
+            heading_level: 3,
+            description: "Work email".to_string(),
+            encrypted_content: "encrypted_work_email".to_string(),
+            salt: Some(b"work_email_salt".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(work_email).unwrap();
+
+        // Add second root entry
+        let personal_root = VaultEntry {
+            scope_path: vec!["personal".to_string()],
+            heading_level: 2, // Should be 2 for root-level entries
+            description: "Personal accounts".to_string(),
+            encrypted_content: String::new(),
+            salt: None,
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(personal_root).unwrap();
+
+        // Add child of personal
+        let personal_bank = VaultEntry {
+            scope_path: vec!["personal".to_string(), "bank".to_string()],
+            heading_level: 3,
+            description: "Personal banking".to_string(),
+            encrypted_content: "encrypted_bank_data".to_string(),
+            salt: Some(b"bank_salt".to_vec()),
+            start_line: 0,
+            end_line: 0,
+        };
+        doc.add_entry(personal_bank).unwrap();
+
+        // Save and reload
+        doc.save(&vault_path).unwrap();
+        let reloaded_doc = parser.parse_file(&vault_path).unwrap();
+
+        // Verify structure
+        assert_eq!(reloaded_doc.entries.len(), 4);
+
+        // Verify root entries
+        assert!(reloaded_doc.find_entry(&["work".to_string()]).is_some());
+        assert!(reloaded_doc.find_entry(&["personal".to_string()]).is_some());
+
+        // Verify children
+        let work_email_entry = reloaded_doc
+            .find_entry(&["work".to_string(), "email".to_string()])
+            .unwrap();
+        assert_eq!(work_email_entry.encrypted_content, "encrypted_work_email");
+
+        let bank_entry = reloaded_doc
+            .find_entry(&["personal".to_string(), "bank".to_string()])
+            .unwrap();
+        assert_eq!(bank_entry.encrypted_content, "encrypted_bank_data");
     }
 }

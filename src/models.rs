@@ -117,9 +117,6 @@ impl VaultDocument {
         // Create parser for formatting
         let parser = VaultParser::new();
 
-        // Format the new entry
-        let entry_lines = parser.format_entry(&entry);
-
         // Find insertion point
         let parent_path = if entry.scope_path.len() > 1 {
             &entry.scope_path[..entry.scope_path.len() - 1]
@@ -132,16 +129,23 @@ impl VaultDocument {
         // Create any missing ancestors
         let ancestors = VaultParser::create_missing_ancestors(self, &entry.scope_path);
 
+        // Check if this will be the first entry (right after root)
+        let is_first_entry = self.entries.is_empty() && ancestors.is_empty();
+
         // Insert ancestors first
         let mut current_insert = insert_point;
-        for ancestor in ancestors {
-            let ancestor_lines = parser.format_entry(&ancestor);
-            for (i, line) in ancestor_lines.iter().enumerate() {
-                self.raw_lines.insert(current_insert + i, line.clone());
+        for (i, ancestor) in ancestors.iter().enumerate() {
+            let is_first_ancestor = self.entries.is_empty() && i == 0;
+            let ancestor_lines = parser.format_entry_with_context(ancestor, is_first_ancestor);
+            for (j, line) in ancestor_lines.iter().enumerate() {
+                self.raw_lines.insert(current_insert + j, line.clone());
             }
             current_insert += ancestor_lines.len();
-            self.entries.push(ancestor);
+            self.entries.push(ancestor.clone());
         }
+
+        // Format the new entry with context
+        let entry_lines = parser.format_entry_with_context(&entry, is_first_entry);
 
         // Insert the new entry
         for (i, line) in entry_lines.iter().enumerate() {
@@ -160,11 +164,31 @@ impl VaultDocument {
         Ok(())
     }
 
-    /// Save the document to a file.
+    /// Save the document to a file with post-save validation.
     pub fn save(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
         use std::fs;
         let content = self.raw_lines.join("");
-        fs::write(path, content)
+        
+        // Write the file
+        fs::write(path, &content)?;
+        
+        // Post-save validation: try to parse the file we just wrote
+        use crate::parser::VaultParser;
+        let parser = VaultParser::new();
+        match parser.parse(&content) {
+            Ok(parsed_doc) => {
+                // Verify we have the same number of entries
+                if parsed_doc.entries.len() != self.entries.len() {
+                    eprintln!("Warning: Saved vault has {} entries but expected {}", 
+                             parsed_doc.entries.len(), self.entries.len());
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Saved vault file may be corrupted: {}", e);
+            }
+        }
+        
+        Ok(())
     }
 }
 
