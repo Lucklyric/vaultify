@@ -231,9 +231,17 @@ impl VaultService {
 
     /// List all unique scopes in the vault.
     pub fn list_scopes(&self, doc: &VaultDocument) -> Vec<String> {
-        let mut scopes: Vec<String> = doc.entries.iter().map(|e| e.scope_string()).collect();
-        scopes.sort();
-        scopes.dedup();
+        // Preserve the order from the vault file
+        let mut seen = std::collections::HashSet::new();
+        let mut scopes = Vec::new();
+        
+        for entry in &doc.entries {
+            let scope = entry.scope_string();
+            if seen.insert(scope.clone()) {
+                scopes.push(scope);
+            }
+        }
+        
         scopes
     }
 
