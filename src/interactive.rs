@@ -212,16 +212,23 @@ impl InteractiveVault {
                 let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
                 let tree_lines = utils::format_tree(&scopes);
 
-                for line in tree_lines {
-                    // Find if this line represents an entry
-                    if let Some(entry) = result.entries.iter().find(|e| line.contains(&e.scope)) {
-                        if !entry.has_content {
-                            println!("  {} {} - {}", line, "[empty]".yellow(), entry.description);
+                for (i, line) in tree_lines.iter().enumerate() {
+                    // Find the corresponding entry by matching the scope from the original scopes list
+                    if i < scopes.len() {
+                        if let Some(entry) = result.entries.iter().find(|e| e.scope == scopes[i]) {
+                            if !entry.has_content {
+                                println!(
+                                    "  {} {} - {}",
+                                    line,
+                                    "[empty]".yellow(),
+                                    entry.description
+                                );
+                            } else {
+                                println!("  {} - {}", line, entry.description);
+                            }
                         } else {
-                            println!("  {} - {}", line, entry.description);
+                            println!("  {line}");
                         }
-                    } else {
-                        println!("  {line}");
                     }
                 }
             }
@@ -521,8 +528,8 @@ impl InteractiveVault {
     /// Decrypt GPG-encrypted vault file (interactive).
     fn gpg_decrypt_interactive(&self) -> Result<()> {
         // Try to find encrypted vault
-        let gpg_path = self.vault_path.with_extension("md.gpg");
-        let asc_path = self.vault_path.with_extension("md.asc");
+        let gpg_path = self.vault_path.with_extension("toml.gpg");
+        let asc_path = self.vault_path.with_extension("toml.asc");
 
         let encrypted_path = if gpg_path.exists() && asc_path.exists() {
             // Both exist, ask which one to use
@@ -546,7 +553,7 @@ impl InteractiveVault {
             asc_path
         } else {
             return Err(VaultError::Other(
-                "No encrypted vault file found (vault.md.gpg or vault.md.asc)".to_string(),
+                "No encrypted vault file found (vault.toml.gpg or vault.toml.asc)".to_string(),
             ));
         };
 
@@ -596,10 +603,10 @@ mod tests {
     #[test]
     fn test_interactive_vault_creation() {
         let dir = tempdir().unwrap();
-        let vault_path = dir.path().join("test_vault.md");
+        let vault_path = dir.path().join("test_vault.toml");
 
         // Create a test vault file
-        std::fs::write(&vault_path, "# root <!-- vaultify v1 -->\n").unwrap();
+        std::fs::write(&vault_path, "version = \"v0.3\"\n").unwrap();
 
         // Create interactive vault
         let vault = InteractiveVault::new(vault_path.clone());

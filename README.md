@@ -10,7 +10,7 @@ A secure, file-based password manager with hierarchical organization. Written in
 
 - 🔐 **Per-item encryption** with Argon2id + AES-256-GCM
 - 📁 **Hierarchical organization** of secrets
-- 📝 **Markdown-based** vault format for easy versioning
+- 📝 **TOML-based** vault format for easy editing and versioning
 - 🔍 **Fast filtering** of entries
 - 📋 **Clipboard integration** with automatic clearing
 - 🚀 **Interactive and CLI modes**
@@ -58,7 +58,7 @@ cargo build --release
 vaultify init
 ```
 
-This creates a `vault.md` file in the current directory.
+This creates a `vault.toml` file in the current directory.
 
 ### Add a secret
 
@@ -134,25 +134,28 @@ vaultify> exit
 
 ## Vault Format
 
-Vaults are stored as markdown files with encrypted content:
+Vaults are stored as TOML files with encrypted content:
 
-```markdown
-# root <!-- vaultify v1 -->
+```toml
+version = "v0.3"
+modified = "2025-01-17T10:00:00Z"
 
-## personal
-<description/>
-Personal accounts
-</description>
-<encrypted></encrypted>
+[personal]
+description = "Personal accounts"
+encrypted = ""
+salt = ""
 
-### personal/email
-<description/>
-Email accounts
-</description>
-<encrypted salt="base64-encoded-salt">
-base64-encoded-encrypted-content
-</encrypted>
+[personal.email]
+description = "Email accounts"
+encrypted = "base64-encoded-encrypted-content"
+salt = "base64-encoded-salt"
 ```
+
+### Key Features:
+- **Insertion order preserved**: Entries maintain their original order
+- **Smart group insertion**: New entries are added at the end of their group
+- **Native TOML format**: Clean, readable structure with dotted key notation
+- **Flexible parsing**: Parent entries are created automatically
 
 ## Security
 

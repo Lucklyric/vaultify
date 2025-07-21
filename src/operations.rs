@@ -78,8 +78,7 @@ impl VaultOperations {
             });
         }
 
-        // Sort for consistent output
-        entries.sort_by(|a, b| a.scope.cmp(&b.scope));
+        // Preserve the order from the vault file - no sorting
 
         Ok(ListResult { entries })
     }

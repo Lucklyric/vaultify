@@ -1,6 +1,6 @@
 [package]
 name = "vaultify"
-version = "0.2.7"
+version = "0.3.0"
 edition = "2021"
 authors = ["vaultify contributors"]
 description = "A secure, file-based secrets vault with interactive CLI"
@@ -42,6 +42,7 @@ atty = "0.2"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = { version = "0.8", features = ["preserve_order"] }
 
 # Error handling
 thiserror = "1.0"

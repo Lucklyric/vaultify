@@ -181,9 +181,9 @@ mod tests {
 
     #[test]
     fn test_is_gpg_file() {
-        assert!(GpgOperations::is_gpg_file(Path::new("vault.md.gpg")));
-        assert!(GpgOperations::is_gpg_file(Path::new("vault.md.asc")));
-        assert!(!GpgOperations::is_gpg_file(Path::new("vault.md")));
+        assert!(GpgOperations::is_gpg_file(Path::new("vault.toml.gpg")));
+        assert!(GpgOperations::is_gpg_file(Path::new("vault.toml.asc")));
+        assert!(!GpgOperations::is_gpg_file(Path::new("vault.toml")));
     }
 
     #[test]

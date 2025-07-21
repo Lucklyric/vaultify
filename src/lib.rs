@@ -7,10 +7,10 @@ pub mod gpg;
 pub mod interactive;
 pub mod models;
 pub mod operations;
-pub mod parser;
 pub mod secure_temp;
 pub mod security;
 pub mod service;
+pub mod toml_parser;
 pub mod utils;
 
 // Re-export commonly used types

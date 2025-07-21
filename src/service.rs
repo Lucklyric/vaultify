@@ -3,14 +3,15 @@
 use crate::crypto::VaultCrypto;
 use crate::error::{Result, VaultError};
 use crate::models::{VaultDocument, VaultEntry};
-use crate::parser::VaultParser;
+use crate::toml_parser::TomlParser;
 use crate::utils;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Service for vault operations.
 pub struct VaultService {
     crypto: VaultCrypto,
-    parser: VaultParser,
+    parser: TomlParser,
 }
 
 impl Default for VaultService {
@@ -24,20 +25,29 @@ impl VaultService {
     pub fn new() -> Self {
         Self {
             crypto: VaultCrypto::new(),
-            parser: VaultParser::new(),
+            parser: TomlParser::new(),
         }
     }
 
     /// Load a vault document from file.
     pub fn load_vault(&self, path: &Path) -> Result<VaultDocument> {
-        self.parser
-            .parse_file(path)
-            .map_err(|e| VaultError::Other(e.to_string()))
+        // Read file content
+        let content = std::fs::read_to_string(path).map_err(VaultError::Io)?;
+
+        // Parse TOML format
+        let mut doc = self.parser.parse(&content)?;
+
+        // Set file path
+        doc.file_path = Some(path.to_path_buf());
+        Ok(doc)
     }
 
     /// Save a vault document to file.
     pub fn save_vault(&self, doc: &VaultDocument, path: &Path) -> Result<()> {
-        doc.save(path).map_err(VaultError::Io)
+        // Format as TOML and save
+        let content = self.parser.format(doc);
+        std::fs::write(path, content).map_err(VaultError::Io)?;
+        Ok(())
     }
 
     /// Add a new entry to the vault.
@@ -68,12 +78,10 @@ impl VaultService {
         // Create new entry
         let entry = VaultEntry {
             scope_path: scope_parts.clone(),
-            heading_level: scope_parts.len() as u8,
             description,
             encrypted_content,
             salt: Some(salt),
-            start_line: 0,
-            end_line: 0,
+            custom_fields: HashMap::new(),
         };
 
         // Add to document
@@ -178,7 +186,6 @@ impl VaultService {
 
         // Update scope
         entry.scope_path = new_scope_parts.clone();
-        entry.heading_level = new_scope_parts.len() as u8;
 
         Ok(())
     }
@@ -224,9 +231,17 @@ impl VaultService {
 
     /// List all unique scopes in the vault.
     pub fn list_scopes(&self, doc: &VaultDocument) -> Vec<String> {
-        let mut scopes: Vec<String> = doc.entries.iter().map(|e| e.scope_string()).collect();
-        scopes.sort();
-        scopes.dedup();
+        // Preserve the order from the vault file
+        let mut seen = std::collections::HashSet::new();
+        let mut scopes = Vec::new();
+
+        for entry in &doc.entries {
+            let scope = entry.scope_string();
+            if seen.insert(scope.clone()) {
+                scopes.push(scope);
+            }
+        }
+
         scopes
     }
 
@@ -282,7 +297,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "test/entry".to_string(),
+                "test.entry".to_string(),
                 "Test entry".to_string(),
                 secret.to_string(),
                 password,
@@ -308,7 +323,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "personal/email".to_string(),
+                "personal.email".to_string(),
                 "Personal email account".to_string(),
                 "secret1".to_string(),
                 password,
@@ -318,7 +333,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "work/email".to_string(),
+                "work.email".to_string(),
                 "Work email account".to_string(),
                 "secret2".to_string(),
                 password,
@@ -328,7 +343,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "personal/banking".to_string(),
+                "personal.banking".to_string(),
                 "Banking credentials".to_string(),
                 "secret3".to_string(),
                 password,
@@ -358,7 +373,7 @@ mod tests {
         service
             .add_entry(
                 &mut doc,
-                "old/path".to_string(),
+                "old.path".to_string(),
                 "Test entry".to_string(),
                 "secret".to_string(),
                 password,
@@ -370,7 +385,7 @@ mod tests {
             .rename_entry(
                 &mut doc,
                 &["old".to_string(), "path".to_string()],
-                "new/path".to_string(),
+                "new.path".to_string(),
             )
             .unwrap();
 

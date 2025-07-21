@@ -1,6 +1,7 @@
 //! Data models for the credential vault.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Represents a single entry in the vault.
@@ -8,24 +9,21 @@ use std::path::PathBuf;
 pub struct VaultEntry {
     /// Scope path, e.g., ("personal", "banking", "chase")
     pub scope_path: Vec<String>,
-    /// Markdown heading depth (1-6)
-    pub heading_level: u8,
     /// Plain text description
     pub description: String,
     /// Base64 encrypted secret
     pub encrypted_content: String,
-    /// Starting line in file (0-based)
-    pub start_line: usize,
-    /// Ending line in file (0-based)
-    pub end_line: usize,
     /// Per-item salt for key derivation
     pub salt: Option<Vec<u8>>,
+    /// Custom fields for extensibility (TOML format)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub custom_fields: HashMap<String, toml::Value>,
 }
 
 impl VaultEntry {
-    /// Get scope as slash-separated string.
+    /// Get scope as dot-separated string.
     pub fn scope_string(&self) -> String {
-        self.scope_path.join("/")
+        self.scope_path.join(".")
     }
 
     /// Check if this entry has encrypted content.
@@ -52,7 +50,7 @@ impl VaultEntry {
 pub struct VaultDocument {
     /// All vault entries in order
     pub entries: Vec<VaultEntry>,
-    /// Original file lines with newlines
+    /// Raw lines (not used in TOML format, kept for compatibility)
     pub raw_lines: Vec<String>,
     /// Path to the vault file
     pub file_path: Option<PathBuf>,
@@ -112,59 +110,42 @@ impl VaultDocument {
 
     /// Add a new entry to the document.
     pub fn add_entry(&mut self, entry: VaultEntry) -> Result<(), Box<dyn std::error::Error>> {
-        use crate::parser::VaultParser;
+        // Find the correct position to insert within the group
+        // We want to maintain group cohesion - all entries with the same top-level
+        // prefix should be together, with new entries added at the end of their group
 
-        // Create parser for formatting
-        let parser = VaultParser::new();
+        if self.entries.is_empty() {
+            self.entries.push(entry);
+            return Ok(());
+        }
 
-        // Format the new entry
-        let entry_lines = parser.format_entry(&entry);
+        // Get the top-level prefix of the new entry
+        let new_prefix = &entry.scope_path[0];
 
-        // Find insertion point
-        let parent_path = if entry.scope_path.len() > 1 {
-            &entry.scope_path[..entry.scope_path.len() - 1]
-        } else {
-            &[]
-        };
-
-        let insert_point = VaultParser::find_insertion_point(self, parent_path);
-
-        // Create any missing ancestors
-        let ancestors = VaultParser::create_missing_ancestors(self, &entry.scope_path);
-
-        // Insert ancestors first
-        let mut current_insert = insert_point;
-        for ancestor in ancestors {
-            let ancestor_lines = parser.format_entry(&ancestor);
-            for (i, line) in ancestor_lines.iter().enumerate() {
-                self.raw_lines.insert(current_insert + i, line.clone());
+        // Find the last index of entries with the same top-level prefix
+        let mut insert_position = None;
+        for (i, existing) in self.entries.iter().enumerate() {
+            if !existing.scope_path.is_empty() && &existing.scope_path[0] == new_prefix {
+                // Found an entry with the same prefix, update insert position
+                insert_position = Some(i + 1);
             }
-            current_insert += ancestor_lines.len();
-            self.entries.push(ancestor);
         }
 
-        // Insert the new entry
-        for (i, line) in entry_lines.iter().enumerate() {
-            self.raw_lines.insert(current_insert + i, line.clone());
+        // If we found entries with the same prefix, insert after the last one
+        // Otherwise, append to the end
+        match insert_position {
+            Some(pos) => self.entries.insert(pos, entry),
+            None => self.entries.push(entry),
         }
-
-        // No need to add blank lines here since they're included in format_entry
-
-        self.entries.push(entry);
-
-        // Re-parse to update line numbers
-        let content = self.raw_lines.join("");
-        let new_doc = parser.parse(&content)?;
-        self.entries = new_doc.entries;
 
         Ok(())
     }
 
     /// Save the document to a file.
-    pub fn save(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
-        use std::fs;
-        let content = self.raw_lines.join("");
-        fs::write(path, content)
+    pub fn save(&self, _path: &std::path::Path) -> Result<(), std::io::Error> {
+        // This method is no longer used - saving is handled by VaultService
+        // which uses TomlParser::format() to generate the content
+        Ok(())
     }
 }
 
@@ -176,36 +157,30 @@ mod tests {
     fn test_vault_entry_scope_string() {
         let entry = VaultEntry {
             scope_path: vec!["personal".to_string(), "banking".to_string()],
-            heading_level: 2,
             description: "Banking info".to_string(),
             encrypted_content: "".to_string(),
-            start_line: 0,
-            end_line: 5,
             salt: None,
+            custom_fields: HashMap::new(),
         };
-        assert_eq!(entry.scope_string(), "personal/banking");
+        assert_eq!(entry.scope_string(), "personal.banking");
     }
 
     #[test]
     fn test_vault_entry_relationships() {
         let parent = VaultEntry {
             scope_path: vec!["personal".to_string()],
-            heading_level: 1,
             description: "Personal".to_string(),
             encrypted_content: "".to_string(),
-            start_line: 0,
-            end_line: 5,
             salt: None,
+            custom_fields: HashMap::new(),
         };
 
         let child = VaultEntry {
             scope_path: vec!["personal".to_string(), "banking".to_string()],
-            heading_level: 2,
             description: "Banking".to_string(),
             encrypted_content: "".to_string(),
-            start_line: 6,
-            end_line: 10,
             salt: None,
+            custom_fields: HashMap::new(),
         };
 
         assert!(parent.is_parent_of(&child));
