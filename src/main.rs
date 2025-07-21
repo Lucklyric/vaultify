@@ -91,7 +91,7 @@ async fn run_interactive() {
             if create {
                 // Create new vault file with TOML format
                 let now = chrono::Utc::now().to_rfc3339();
-                let content = format!("version = \"v0.3\"\ncreated = \"{}\"\n", now);
+                let content = format!("version = \"v0.3\"\ncreated = \"{now}\"\n");
                 match std::fs::write(&vault_path, content) {
                     Ok(_) => {
                         // Set secure permissions

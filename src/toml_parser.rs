@@ -138,7 +138,7 @@ impl TomlParser {
 
             // Add custom fields
             for (k, v) in &entry.custom_fields {
-                lines.push(format!("{} = {}", k, format_toml_value(v)));
+                lines.push(format!("{k} = {}", format_toml_value(v)));
             }
 
             lines.push(String::new()); // blank line between entries
