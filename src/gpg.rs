@@ -1,6 +1,7 @@
 //! GPG integration for encrypting/decrypting vault files.
 
 use crate::error::{Result, VaultError};
+use crate::utils;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,12 +37,27 @@ impl GpgOperations {
             return Err(VaultError::VaultNotFound(vault_path.to_path_buf()));
         }
 
-        // Create output path
+        // Create output path based on original file extension
         let output_path = if armor {
-            vault_path.with_extension("md.asc")
+            vault_path.with_extension("toml.asc")
         } else {
-            vault_path.with_extension("md.gpg")
+            vault_path.with_extension("toml.gpg")
         };
+
+        // Check if output already exists and prompt for overwrite
+        if output_path.exists()
+            && !utils::prompt_yes_no(
+                &format!(
+                    "GPG encrypted file {} already exists. Overwrite?",
+                    output_path.display()
+                ),
+                true,
+            )?
+        {
+            return Err(VaultError::Cancelled);
+        }
+
+        // Remove this duplicate backup prompt - backup is already handled in save_vault
 
         // Build GPG command
         let mut cmd = Command::new("gpg");
@@ -88,19 +104,37 @@ impl GpgOperations {
         let output = if let Some(path) = output_path {
             path.to_path_buf()
         } else {
-            // Remove .gpg or .asc extension
-            let stem = encrypted_path
-                .file_stem()
-                .ok_or_else(|| VaultError::Other("Invalid encrypted file name".to_string()))?;
-            encrypted_path.with_file_name(stem)
+            // Remove .gpg or .asc extension to get original filename
+            let file_name = encrypted_path
+                .file_name()
+                .ok_or_else(|| VaultError::Other("Invalid encrypted file name".to_string()))?
+                .to_string_lossy();
+
+            // Handle both vault.toml.gpg and vault.toml.asc formats
+            let output_name = if file_name.ends_with(".gpg") {
+                file_name.trim_end_matches(".gpg")
+            } else if file_name.ends_with(".asc") {
+                file_name.trim_end_matches(".asc")
+            } else {
+                return Err(VaultError::Other(
+                    "Encrypted file must have .gpg or .asc extension".to_string(),
+                ));
+            };
+
+            encrypted_path.with_file_name(output_name)
         };
 
-        // Check if output already exists
-        if output.exists() {
-            return Err(VaultError::Other(format!(
-                "Output file already exists: {}. Please move or delete it first.",
-                output.display()
-            )));
+        // Check if output already exists and prompt for overwrite
+        if output.exists()
+            && !utils::prompt_yes_no(
+                &format!(
+                    "Output file {} already exists. Overwrite?",
+                    output.display()
+                ),
+                true,
+            )?
+        {
+            return Err(VaultError::Cancelled);
         }
 
         // Build GPG command
@@ -166,7 +200,20 @@ impl GpgOperations {
 
     /// Create a backup of the vault file before GPG operations.
     pub fn backup_vault(vault_path: &Path) -> Result<PathBuf> {
-        let backup_path = vault_path.with_extension("md.backup");
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let file_name = vault_path
+            .file_name()
+            .ok_or_else(|| VaultError::Other("Invalid file name".to_string()))?
+            .to_string_lossy();
+
+        // For GPG files, create backup as vault.toml.gpg.backup.timestamp
+        // For regular files, create backup as vault.toml.backup.timestamp
+        let backup_path = if file_name.ends_with(".gpg") || file_name.ends_with(".asc") {
+            vault_path.with_file_name(format!("{file_name}.backup.{timestamp}"))
+        } else {
+            // When encrypting a regular file, assume it will become .gpg
+            vault_path.with_file_name(format!("{file_name}.gpg.backup.{timestamp}"))
+        };
 
         fs::copy(vault_path, &backup_path)
             .map_err(|e| VaultError::Other(format!("Failed to create backup: {e}")))?;

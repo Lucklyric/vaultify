@@ -537,11 +537,7 @@ impl Cli {
         let should_backup = if backup {
             true
         } else {
-            print!("Create backup before encryption? [y/N]: ");
-            io::stdout().flush()?;
-            let mut response = String::new();
-            io::stdin().read_line(&mut response)?;
-            response.trim().to_lowercase() == "y"
+            utils::prompt_yes_no("Create backup before encryption?", true)?
         };
 
         // Create backup if requested
