@@ -44,9 +44,44 @@ impl VaultService {
 
     /// Save a vault document to file.
     pub fn save_vault(&self, doc: &VaultDocument, path: &Path) -> Result<()> {
+        // Check if vault already exists
+        if path.exists() {
+            // Prompt for backup
+            if utils::prompt_yes_no("Create backup before saving?", true)? {
+                self.create_backup(path)?;
+            }
+        }
+
         // Format as TOML and save
         let content = self.parser.format(doc);
         std::fs::write(path, content).map_err(VaultError::Io)?;
+        Ok(())
+    }
+
+    /// Create a backup of the vault file
+    fn create_backup(&self, path: &Path) -> Result<()> {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| VaultError::Other("Invalid file name".to_string()))?
+            .to_string_lossy();
+        let backup_path = path.with_file_name(format!("{file_name}.backup.{timestamp}"));
+
+        // Check if backup already exists (unlikely with timestamp, but just in case)
+        if backup_path.exists()
+            && !utils::prompt_yes_no(
+                &format!(
+                    "Backup {} already exists. Overwrite?",
+                    backup_path.display()
+                ),
+                true,
+            )?
+        {
+            return Err(VaultError::Cancelled);
+        }
+
+        std::fs::copy(path, &backup_path).map_err(VaultError::Io)?;
+        println!("Created backup: {}", backup_path.display());
         Ok(())
     }
 

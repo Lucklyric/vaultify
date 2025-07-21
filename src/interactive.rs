@@ -486,20 +486,10 @@ impl InteractiveVault {
         };
 
         // Ask for ASCII armor
-        print!("\nCreate ASCII armored output (.asc)? [y/N]: ");
-        io::stdout().flush()?;
-
-        let mut armor_response = String::new();
-        io::stdin().read_line(&mut armor_response)?;
-        let armor = armor_response.trim().to_lowercase() == "y";
+        let armor = utils::prompt_yes_no("\nCreate ASCII armored output (.asc)?", true)?;
 
         // Ask for backup
-        print!("\nCreate backup before encryption? [y/N]: ");
-        io::stdout().flush()?;
-
-        let mut backup_response = String::new();
-        io::stdin().read_line(&mut backup_response)?;
-        let create_backup = backup_response.trim().to_lowercase() == "y";
+        let create_backup = utils::prompt_yes_no("\nCreate backup before encryption?", true)?;
 
         // Create backup if requested
         if create_backup {

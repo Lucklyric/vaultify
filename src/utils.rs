@@ -366,6 +366,25 @@ pub fn cleanup_old_temp_files() -> Result<()> {
     Ok(())
 }
 
+/// Prompt user with a yes/no question, with default value
+pub fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool> {
+    use std::io::{self, Write};
+
+    let default_hint = if default { "Y/n" } else { "y/N" };
+    print!("{prompt} [{default_hint}]: ");
+    io::stdout().flush().map_err(VaultError::Io)?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(VaultError::Io)?;
+
+    let input = input.trim().to_lowercase();
+    if input.is_empty() {
+        Ok(default)
+    } else {
+        Ok(input == "y" || input == "yes")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
