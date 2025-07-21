@@ -409,8 +409,14 @@ salt = "YmFzZTY0X3NhbHQ="
         assert!(a_pos < a3_pos);
 
         // Verify children maintain exact insertion order (a3, a1, a2)
-        assert!(a3_pos < a1_pos, "a3 should come before a1 (insertion order)");
-        assert!(a1_pos < a2_pos, "a1 should come before a2 (insertion order)");
+        assert!(
+            a3_pos < a1_pos,
+            "a3 should come before a1 (insertion order)"
+        );
+        assert!(
+            a1_pos < a2_pos,
+            "a1 should come before a2 (insertion order)"
+        );
     }
 
     #[test]

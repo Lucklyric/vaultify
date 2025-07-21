@@ -113,15 +113,15 @@ impl VaultDocument {
         // Find the correct position to insert within the group
         // We want to maintain group cohesion - all entries with the same top-level
         // prefix should be together, with new entries added at the end of their group
-        
+
         if self.entries.is_empty() {
             self.entries.push(entry);
             return Ok(());
         }
-        
+
         // Get the top-level prefix of the new entry
         let new_prefix = &entry.scope_path[0];
-        
+
         // Find the last index of entries with the same top-level prefix
         let mut insert_position = None;
         for (i, existing) in self.entries.iter().enumerate() {
@@ -130,14 +130,14 @@ impl VaultDocument {
                 insert_position = Some(i + 1);
             }
         }
-        
+
         // If we found entries with the same prefix, insert after the last one
         // Otherwise, append to the end
         match insert_position {
             Some(pos) => self.entries.insert(pos, entry),
             None => self.entries.push(entry),
         }
-        
+
         Ok(())
     }
 
