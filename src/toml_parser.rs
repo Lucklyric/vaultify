@@ -56,14 +56,13 @@ impl TomlParser {
         // Parse TOML with order preservation
         let table: Table = content
             .parse()
-            .map_err(|e| VaultError::Other(format!("TOML parse error: {}", e)))?;
+            .map_err(|e| VaultError::Other(format!("TOML parse error: {e}")))?;
 
         // Check version
         if let Some(version) = table.get("version").and_then(|v| v.as_str()) {
             if !self.supported_versions.contains(&version) {
                 return Err(VaultError::Other(format!(
-                    "Unsupported TOML version: {}",
-                    version
+                    "Unsupported TOML version: {version}"
                 )));
             }
         }
@@ -99,7 +98,7 @@ impl TomlParser {
         // Add metadata at the top
         lines.push(format!("version = \"{}\"", self.current_version));
         let now = chrono::Utc::now().to_rfc3339();
-        lines.push(format!("modified = \"{}\"", now));
+        lines.push(format!("modified = \"{now}\""));
         lines.push(String::new()); // blank line
 
         // Preserve exact file order - no sorting at all
@@ -115,7 +114,7 @@ impl TomlParser {
 
             // Create the dotted key section header
             let section_key = entry.scope_path.join(".");
-            lines.push(format!("[{}]", section_key));
+            lines.push(format!("[{section_key}]"));
 
             // Add fields
             lines.push(format!(
@@ -284,7 +283,7 @@ fn format_toml_value(value: &toml::Value) -> String {
             let items: Vec<String> = arr.iter().map(format_toml_value).collect();
             format!("[{}]", items.join(", "))
         }
-        toml::Value::Datetime(dt) => format!("\"{}\"", dt),
+        toml::Value::Datetime(dt) => format!("\"{dt}\""),
         toml::Value::Table(_) => "{ ... }".to_string(), // Shouldn't happen for custom fields
     }
 }

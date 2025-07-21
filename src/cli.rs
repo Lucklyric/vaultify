@@ -345,7 +345,7 @@ impl Cli {
                         if !entry.has_content {
                             println!("{} {} - {}", line, "[empty]".yellow(), first_line);
                         } else {
-                            println!("{} - {}", line, first_line);
+                            println!("{line} - {first_line}");
                         }
 
                         // Print additional description lines with appropriate indentation
@@ -354,7 +354,7 @@ impl Cli {
                             let indent_len = line.len() + 3; // +3 for " - "
                             let indent = " ".repeat(indent_len);
                             for desc_line in desc_lines.iter().skip(1) {
-                                println!("{}{}", indent, desc_line);
+                                println!("{indent}{desc_line}");
                             }
                         }
                     } else {
@@ -390,7 +390,7 @@ impl Cli {
 
                         // Print additional description lines indented
                         for line in desc_lines.iter().skip(1) {
-                            println!("  {}", line);
+                            println!("  {line}");
                         }
                     }
                 }
