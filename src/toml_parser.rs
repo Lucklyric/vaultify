@@ -39,8 +39,8 @@ pub struct TomlParser {
 impl Default for TomlParser {
     fn default() -> Self {
         Self {
-            supported_versions: vec!["v0.3"],
-            current_version: "v0.3",
+            supported_versions: vec!["v0.3", "v0.3.1"],
+            current_version: "v0.3.1",
         }
     }
 }
@@ -501,7 +501,7 @@ tags = ["finance", "important"]
         let parser = TomlParser::new();
         let formatted = parser.format(&doc);
 
-        assert!(formatted.contains("version = \"v0.3\""));
+        assert!(formatted.contains("version = \"v0.3.1\""));
         assert!(formatted.contains("[work.email]")); // Now using native TOML dotted notation
         assert!(formatted.contains("description = \"Work email\""));
         assert!(formatted.contains("expires = \"2025-12-31\""));

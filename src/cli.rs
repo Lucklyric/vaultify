@@ -260,7 +260,7 @@ impl Cli {
         }
 
         // Create vault file with TOML format
-        let content = "version = \"v0.3\"\ncreated = \"{}\"\n";
+        let content = "version = \"v0.3.1\"\ncreated = \"{}\"\n";
         let now = chrono::Utc::now().to_rfc3339();
         fs::write(&vault_path, content.replace("{}", &now))?;
 
