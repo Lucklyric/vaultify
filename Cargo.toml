@@ -1,6 +1,6 @@
 [package]
 name = "vaultify"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["vaultify contributors"]
 description = "A secure, file-based secrets vault with interactive CLI"
@@ -43,6 +43,7 @@ atty = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = { version = "0.8", features = ["preserve_order"] }
+toml_edit = "0.22"
 
 # Error handling
 thiserror = "1.0"

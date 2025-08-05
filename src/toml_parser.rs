@@ -4,9 +4,11 @@ use crate::crypto::VaultCrypto;
 use crate::error::{Result, VaultError};
 use crate::models::{VaultDocument, VaultEntry};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use toml::value::Table;
+use toml_edit::{DocumentMut, Item, Value as EditValue};
 
 /// TOML format metadata
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,13 +36,16 @@ struct TomlEntry {
 pub struct TomlParser {
     supported_versions: Vec<&'static str>,
     current_version: &'static str,
+    /// Original TOML document for comment preservation
+    original_document: RefCell<Option<DocumentMut>>,
 }
 
 impl Default for TomlParser {
     fn default() -> Self {
         Self {
-            supported_versions: vec!["v0.3", "v0.3.1"],
-            current_version: "v0.3.1",
+            supported_versions: vec!["v0.3", "v0.3.1", "v0.3.2"],
+            current_version: "v0.3.2",
+            original_document: RefCell::new(None),
         }
     }
 }
@@ -53,10 +58,13 @@ impl TomlParser {
 
     /// Parse vault content into a VaultDocument.
     pub fn parse(&self, content: &str) -> Result<VaultDocument> {
-        // Parse TOML with order preservation
+        // Parse TOML with order preservation for data extraction
         let table: Table = content
             .parse()
             .map_err(|e| VaultError::Other(format!("TOML parse error: {e}")))?;
+
+        // Store original document for comment preservation
+        *self.original_document.borrow_mut() = content.parse::<DocumentMut>().ok();
 
         // Check version
         if let Some(version) = table.get("version").and_then(|v| v.as_str()) {
@@ -90,9 +98,100 @@ impl TomlParser {
         Ok(doc)
     }
 
-    /// Format a VaultDocument as TOML.
+    /// Format a VaultDocument as TOML, preserving comments if available.
     pub fn format(&self, doc: &VaultDocument) -> String {
-        // Build hierarchical structure for proper TOML dotted keys
+        // If we have the original document with comments, use it as a base
+        if let Some(ref original) = *self.original_document.borrow() {
+            return self.format_with_comments(doc, original);
+        }
+
+        // Fallback to regular formatting
+        self.format_without_comments(doc)
+    }
+
+    /// Format with comment preservation using the original document.
+    fn format_with_comments(&self, doc: &VaultDocument, original: &DocumentMut) -> String {
+        let mut document = original.clone();
+
+        // Update metadata
+        document["version"] = toml_edit::value(self.current_version);
+        let now = chrono::Utc::now().to_rfc3339();
+        document["modified"] = toml_edit::value(now);
+
+        // Update entries while preserving comments
+        for entry in &doc.entries {
+            // Skip empty parent entries that only exist for hierarchy
+            if entry.encrypted_content.is_empty() && entry.description.ends_with(" secrets") {
+                continue;
+            }
+
+            let section_key = entry.scope_path.join(".");
+
+            // Ensure the section exists
+            if document.get(&section_key).is_none() {
+                document[&section_key] = toml_edit::table();
+            }
+
+            if let Some(table) = document
+                .get_mut(&section_key)
+                .and_then(|item| item.as_table_mut())
+            {
+                // Update description
+                table["description"] = toml_edit::value(&entry.description);
+
+                // Update encrypted content
+                if !entry.encrypted_content.is_empty() {
+                    table["encrypted"] = toml_edit::value(&entry.encrypted_content);
+                } else {
+                    table["encrypted"] = toml_edit::value("");
+                }
+
+                // Update salt
+                if let Some(salt) = &entry.salt {
+                    table["salt"] = toml_edit::value(VaultCrypto::encode_salt(salt));
+                } else {
+                    table["salt"] = toml_edit::value("");
+                }
+
+                // Update custom fields
+                for (key, value) in &entry.custom_fields {
+                    if !matches!(key.as_str(), "description" | "encrypted" | "salt") {
+                        table[key] = Self::convert_toml_value(value);
+                    }
+                }
+            }
+        }
+
+        document.to_string()
+    }
+
+    /// Convert toml::Value to toml_edit::Item
+    fn convert_toml_value(value: &toml::Value) -> Item {
+        match value {
+            toml::Value::String(s) => Item::Value(EditValue::from(s.as_str())),
+            toml::Value::Integer(i) => Item::Value(EditValue::from(*i)),
+            toml::Value::Float(f) => Item::Value(EditValue::from(*f)),
+            toml::Value::Boolean(b) => Item::Value(EditValue::from(*b)),
+            toml::Value::Array(arr) => {
+                let mut toml_arr = toml_edit::Array::new();
+                for item in arr {
+                    if let Item::Value(v) = Self::convert_toml_value(item) {
+                        toml_arr.push(v);
+                    }
+                }
+                Item::Value(EditValue::Array(toml_arr))
+            }
+            toml::Value::Table(_) => {
+                // For simplicity, convert tables to strings
+                Item::Value(EditValue::from(value.to_string()))
+            }
+            toml::Value::Datetime(dt) => Item::Value(EditValue::from(dt.to_string())),
+        }
+    }
+
+    /// Format without comment preservation (fallback).
+    fn format_without_comments(&self, doc: &VaultDocument) -> String {
+        // Build hierarchical structure for proper TOML dotted keys (fallback method)
         let mut lines = Vec::new();
 
         // Add metadata at the top
@@ -501,9 +600,46 @@ tags = ["finance", "important"]
         let parser = TomlParser::new();
         let formatted = parser.format(&doc);
 
-        assert!(formatted.contains("version = \"v0.3.1\""));
+        assert!(formatted.contains("version = \"v0.3.2\""));
         assert!(formatted.contains("[work.email]")); // Now using native TOML dotted notation
         assert!(formatted.contains("description = \"Work email\""));
         assert!(formatted.contains("expires = \"2025-12-31\""));
+    }
+
+    #[test]
+    fn test_comment_preservation() {
+        let content_with_comments = r#"# Vault configuration
+version = "v0.3.2"
+created = "2025-01-17T10:00:00Z"
+
+# Personal accounts section
+[personal.email]
+description = "Personal email account"
+encrypted = "dGVzdA=="
+salt = "c2FsdA=="
+# This is a comment about the email account
+
+[work.servers]  # Production servers
+description = "Server credentials"
+encrypted = "c2VydmVy"
+salt = "d29yaw=="
+"#;
+
+        let parser = TomlParser::new();
+        let doc = parser.parse(content_with_comments).unwrap();
+
+        // Format the document - should preserve comments
+        let formatted = parser.format(&doc);
+
+        // Check that comments are preserved
+        assert!(formatted.contains("# Vault configuration"));
+        assert!(formatted.contains("# Personal accounts section"));
+        assert!(formatted.contains("# This is a comment about the email account"));
+        assert!(formatted.contains("# Production servers"));
+
+        // Check that structure is still correct
+        assert!(formatted.contains("version = \"v0.3.2\""));
+        assert!(formatted.contains("[personal.email]"));
+        assert!(formatted.contains("[work.servers]"));
     }
 }

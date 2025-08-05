@@ -9,7 +9,7 @@ fn test_toml_format_integration() {
     let vault_path = temp_dir.path().join("test.toml");
 
     // Create initial TOML content
-    let initial_content = r#"version = "v0.3.1"
+    let initial_content = r#"version = "v0.3.2"
 created = "2025-01-17T10:00:00Z"
 
 [personal.banking]
@@ -72,7 +72,7 @@ last_rotated = "2025-01-10"
     println!("Saved TOML content:\n{}", saved_content);
 
     // Verify TOML structure
-    assert!(saved_content.contains("version = \"v0.3.1\""));
+    assert!(saved_content.contains("version = \"v0.3.2\""));
     assert!(saved_content.contains("[personal.banking]")); // Native TOML dotted notation
     assert!(saved_content.contains("last_rotated = \"2025-01-10\"")); // Custom field preserved
     assert!(saved_content.contains("[work.servers]")); // Native TOML dotted notation

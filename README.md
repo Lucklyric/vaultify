@@ -145,7 +145,7 @@ vaultify> exit
 Vaults are stored as TOML files with encrypted content:
 
 ```toml
-version = "v0.3.1"
+version = "v0.3.2"
 modified = "2025-01-17T10:00:00Z"
 
 [personal]
@@ -163,6 +163,7 @@ salt = "base64-encoded-salt"
 - **Insertion order preserved**: Entries maintain their original order
 - **Smart group insertion**: New entries are added at the end of their group
 - **Native TOML format**: Clean, readable structure with dotted key notation
+- **Comment preservation**: Comments in TOML files are preserved when editing
 - **Flexible parsing**: Parent entries are created automatically
 
 ## Backup System
