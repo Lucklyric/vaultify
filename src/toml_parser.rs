@@ -117,10 +117,16 @@ impl TomlParser {
             lines.push(format!("[{section_key}]"));
 
             // Add fields
-            lines.push(format!(
-                "description = \"{}\"",
-                escape_toml_string(&entry.description)
-            ));
+            // Use multiline string format for descriptions with newlines
+            if entry.description.contains('\n') {
+                // Use TOML multi-line literal string (triple quotes)
+                lines.push(format!("description = '''\n{}'''", entry.description));
+            } else {
+                lines.push(format!(
+                    "description = \"{}\"",
+                    escape_toml_string(&entry.description)
+                ));
+            }
 
             // Always include encrypted field
             if !entry.encrypted_content.is_empty() {
@@ -275,7 +281,14 @@ fn escape_toml_string(s: &str) -> String {
 /// Format a TOML value for output
 fn format_toml_value(value: &toml::Value) -> String {
     match value {
-        toml::Value::String(s) => format!("\"{}\"", escape_toml_string(s)),
+        toml::Value::String(s) => {
+            if s.contains('\n') {
+                // Use TOML multi-line literal string
+                format!("'''\n{s}'''")
+            } else {
+                format!("\"{}\"", escape_toml_string(s))
+            }
+        }
         toml::Value::Integer(i) => i.to_string(),
         toml::Value::Float(f) => f.to_string(),
         toml::Value::Boolean(b) => b.to_string(),

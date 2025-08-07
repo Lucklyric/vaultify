@@ -196,14 +196,9 @@ impl InteractiveVault {
                 println!();
                 for entry in &result.entries {
                     if !entry.has_content {
-                        println!(
-                            "  {} {} - {}",
-                            entry.scope.cyan(),
-                            "[empty]".yellow(),
-                            entry.description
-                        );
+                        println!("  {} {}", entry.scope.cyan(), "[empty]".yellow());
                     } else {
-                        println!("  {} - {}", entry.scope.cyan(), entry.description);
+                        println!("  {}", entry.scope.cyan());
                     }
                 }
             } else {
@@ -217,14 +212,9 @@ impl InteractiveVault {
                     if i < scopes.len() {
                         if let Some(entry) = result.entries.iter().find(|e| e.scope == scopes[i]) {
                             if !entry.has_content {
-                                println!(
-                                    "  {} {} - {}",
-                                    line,
-                                    "[empty]".yellow(),
-                                    entry.description
-                                );
+                                println!("  {} {}", line, "[empty]".yellow());
                             } else {
-                                println!("  {} - {}", line, entry.description);
+                                println!("  {line}");
                             }
                         } else {
                             println!("  {line}");

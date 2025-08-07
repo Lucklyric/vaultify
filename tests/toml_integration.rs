@@ -69,7 +69,7 @@ last_rotated = "2025-01-10"
     // Read and verify the saved content
     let saved_content = std::fs::read_to_string(&vault_path).unwrap();
 
-    println!("Saved TOML content:\n{}", saved_content);
+    println!("Saved TOML content:\n{saved_content}");
 
     // Verify TOML structure
     assert!(saved_content.contains("version = \"v0.3.1\""));

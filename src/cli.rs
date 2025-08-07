@@ -331,7 +331,7 @@ impl Cli {
         let use_tree = tree && scope_filter.is_none();
 
         if use_tree {
-            // Display as tree with descriptions
+            // Display as tree without descriptions
             let scopes: Vec<String> = result.entries.iter().map(|e| e.scope.clone()).collect();
             let tree_lines = utils::format_tree(&scopes);
 
@@ -339,23 +339,10 @@ impl Cli {
                 // Find the corresponding entry by matching the scope from the original scopes list
                 if i < scopes.len() {
                     if let Some(entry) = result.entries.iter().find(|e| e.scope == scopes[i]) {
-                        let desc_lines: Vec<&str> = entry.description.lines().collect();
-                        let first_line = desc_lines.first().copied().unwrap_or("");
-
                         if !entry.has_content {
-                            println!("{} {} - {}", line, "[empty]".yellow(), first_line);
+                            println!("{} {}", line, "[empty]".yellow());
                         } else {
-                            println!("{line} - {first_line}");
-                        }
-
-                        // Print additional description lines with appropriate indentation
-                        if desc_lines.len() > 1 {
-                            // Calculate indentation based on tree line
-                            let indent_len = line.len() + 3; // +3 for " - "
-                            let indent = " ".repeat(indent_len);
-                            for desc_line in desc_lines.iter().skip(1) {
-                                println!("{indent}{desc_line}");
-                            }
+                            println!("{line}");
                         }
                     } else {
                         println!("{line}");
@@ -373,24 +360,10 @@ impl Cli {
                     }
 
                     for entry in &result.entries {
-                        // Format multiline descriptions
-                        let desc_lines: Vec<&str> = entry.description.lines().collect();
-                        let first_line = desc_lines.first().copied().unwrap_or("");
-
                         if entry.has_content {
-                            println!("{} - {}", entry.scope.cyan(), first_line);
+                            println!("{}", entry.scope.cyan());
                         } else {
-                            println!(
-                                "{} {} - {}",
-                                entry.scope.cyan(),
-                                "[empty]".yellow(),
-                                first_line
-                            );
-                        }
-
-                        // Print additional description lines indented
-                        for line in desc_lines.iter().skip(1) {
-                            println!("  {line}");
+                            println!("{} {}", entry.scope.cyan(), "[empty]".yellow());
                         }
                     }
                 }
