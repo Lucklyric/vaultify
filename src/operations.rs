@@ -302,3 +302,82 @@ impl VaultOperations {
         Ok(())
     }
 }
+
+// ============================================================================
+// User Story 3: Validation Functions (T091-T095)
+// ============================================================================
+
+use crate::models::{ValidationIssue, ValidationReport};
+use crate::toml_parser::TomlParser;
+use crate::utils::validate_scope_name;
+use regex::Regex;
+
+/// Validate a vault file for invalid scopes (T091)
+pub fn validate_vault_file(path: &Path) -> Result<ValidationReport> {
+    let content = std::fs::read_to_string(path).map_err(VaultError::Io)?;
+    let parser = TomlParser::new();
+
+    let mut report = ValidationReport {
+        file_path: path.to_path_buf(),
+        issues: Vec::new(),
+        parse_error: None,
+        vault_version: None,
+    };
+
+    // Two-phase validation: Try full TOML parse first
+    match parser.parse(&content) {
+        Ok(doc) => {
+            // T092: Full TOML parse succeeded - validate all scopes
+            for entry in &doc.entries {
+                let scope = entry.scope_string();
+                if let Err(VaultError::InvalidScope(err)) = validate_scope_name(&scope) {
+                    // Find the line number in the file
+                    let line_number = find_scope_line_number(&content, &scope);
+                    report.issues.push(ValidationIssue {
+                        line_number,
+                        scope: scope.clone(),
+                        error: err,
+                    });
+                }
+            }
+        }
+        Err(e) => {
+            // T093: TOML parse failed - use regex fallback for best-effort
+            report.parse_error = Some(e.to_string());
+            scan_for_invalid_scopes(&content, &mut report)?;
+        }
+    }
+
+    Ok(report)
+}
+
+/// Find the line number where a scope appears in the content
+fn find_scope_line_number(content: &str, scope: &str) -> usize {
+    let section_header = format!("[{scope}]");
+    for (idx, line) in content.lines().enumerate() {
+        if line.trim() == section_header {
+            return idx + 1; // 1-based line numbers
+        }
+    }
+    1 // Default to line 1 if not found
+}
+
+/// Scan content for invalid scopes using regex (best-effort when TOML parse fails)
+fn scan_for_invalid_scopes(content: &str, report: &mut ValidationReport) -> Result<()> {
+    let section_regex = Regex::new(r"\[([^\]]+)\]").unwrap();
+
+    for (line_num, line) in content.lines().enumerate() {
+        if let Some(captures) = section_regex.captures(line) {
+            let scope = captures.get(1).unwrap().as_str();
+            if let Err(VaultError::InvalidScope(err)) = validate_scope_name(scope) {
+                report.issues.push(ValidationIssue {
+                    line_number: line_num + 1,
+                    scope: scope.to_string(),
+                    error: err,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}

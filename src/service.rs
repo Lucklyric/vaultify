@@ -95,9 +95,7 @@ impl VaultService {
         password: &str,
     ) -> Result<()> {
         // Validate scope
-        if !utils::validate_scope_name(&scope) {
-            return Err(VaultError::InvalidScope(scope));
-        }
+        utils::validate_scope_name(&scope)?;
 
         // Parse scope path
         let scope_parts = utils::parse_scope_path(&scope);
@@ -201,9 +199,7 @@ impl VaultService {
         new_scope: String,
     ) -> Result<()> {
         // Validate new scope
-        if !utils::validate_scope_name(&new_scope) {
-            return Err(VaultError::InvalidScope(new_scope));
-        }
+        utils::validate_scope_name(&new_scope)?;
 
         let new_scope_parts = utils::parse_scope_path(&new_scope);
 

@@ -140,13 +140,76 @@ vaultify> decrypt work/vpn
 vaultify> exit
 ```
 
+## Scope Naming Rules (v0.4.0+)
+
+Starting in version 0.4.0, vaultify enforces strict validation rules for scope names to prevent vault file corruption.
+
+### ✅ Valid Characters
+
+Scope names can only contain:
+- **Letters**: `A-Z`, `a-z`
+- **Numbers**: `0-9`
+- **Separators**: `.` (dot)
+- **Special**: `-` (hyphen), `_` (underscore)
+
+**ASCII Only**: No Unicode or special characters allowed for security.
+
+### ✅ Structure Rules
+
+1. **Dots separate parts**: Use dots to create hierarchy
+   - Example: `work.email.gmail`
+
+2. **No leading/trailing dots**: Must start and end with alphanumeric
+   - ❌ `.work` → ✅ `work`
+   - ❌ `work.` → ✅ `work`
+
+3. **No consecutive dots**: Each dot must separate valid parts
+   - ❌ `work..email` → ✅ `work.email`
+
+4. **No spaces**: Use dots instead
+   - ❌ `work email` → ✅ `work.email`
+
+5. **Hyphens/underscores within parts only**: Not at boundaries
+   - ❌ `-work` → ✅ `my-work`
+   - ❌ `work-` → ✅ `my-work`
+   - ✅ `my-work.my-email` (valid)
+
+6. **Maximum length**: 256 characters
+
+### Validate Command
+
+Check your vault for invalid scopes before migration:
+
+```bash
+# Check current directory vault
+vaultify validate
+
+# Check specific file
+vaultify validate path/to/vault.toml
+```
+
+**Example output** (if invalid):
+```
+✗ Found 2 invalid scopes in vault file:
+
+Line 5: [work email]
+  Invalid scope 'work email' at position 5: found space character
+  Suggestion: Use 'work.email' instead
+
+Line 12: [test..scope]
+  Invalid scope 'test..scope' at position 5-6: found consecutive dots
+  Suggestion: Use 'test.scope' instead
+```
+
+For more details, see the [migration guide in CHANGELOG.md](CHANGELOG.md#040---2025-10-15).
+
 ## Vault Format
 
 Vaults are stored as TOML files with encrypted content:
 
 ```toml
-version = "v0.3.1"
-modified = "2025-01-17T10:00:00Z"
+version = "v0.4.0"
+modified = "2025-10-15T10:00:00Z"
 
 [personal]
 description = "Personal accounts"

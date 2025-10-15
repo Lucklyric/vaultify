@@ -189,3 +189,57 @@ mod tests {
         assert!(!parent.is_child_of(&child));
     }
 }
+
+// ============================================================================
+// User Story 3: Validation Models (T085-T089)
+// ============================================================================
+
+use crate::error::ScopeValidationError;
+use std::fmt;
+
+/// Represents a single validation issue in a vault file
+#[derive(Debug, Clone)]
+pub struct ValidationIssue {
+    /// Line number in the vault file where the issue was found
+    pub line_number: usize,
+    /// The invalid scope name
+    pub scope: String,
+    /// The validation error details
+    pub error: ScopeValidationError,
+}
+
+impl fmt::Display for ValidationIssue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "Line {}: [{}]", self.line_number, self.scope)?;
+        write!(f, "  {}", self.error)
+    }
+}
+
+/// Report of vault file validation results
+#[derive(Debug, Clone)]
+pub struct ValidationReport {
+    /// Path to the validated vault file
+    pub file_path: PathBuf,
+    /// List of validation issues found
+    pub issues: Vec<ValidationIssue>,
+    /// Optional TOML parse error if file couldn't be parsed
+    pub parse_error: Option<String>,
+    /// Vault version if parseable
+    pub vault_version: Option<String>,
+}
+
+impl ValidationReport {
+    /// Check if the vault is valid (no issues)
+    pub fn is_valid(&self) -> bool {
+        self.issues.is_empty() && self.parse_error.is_none()
+    }
+
+    /// Get appropriate exit code (0 for valid, 1 for invalid)
+    pub fn exit_code(&self) -> i32 {
+        if self.is_valid() {
+            0
+        } else {
+            1
+        }
+    }
+}

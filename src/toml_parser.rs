@@ -39,8 +39,8 @@ pub struct TomlParser {
 impl Default for TomlParser {
     fn default() -> Self {
         Self {
-            supported_versions: vec!["v0.3", "v0.3.1"],
-            current_version: "v0.3.1",
+            supported_versions: vec!["v0.3", "v0.3.1", "v0.4.0"],
+            current_version: "v0.4.0",
         }
     }
 }
@@ -54,9 +54,12 @@ impl TomlParser {
     /// Parse vault content into a VaultDocument.
     pub fn parse(&self, content: &str) -> Result<VaultDocument> {
         // Parse TOML with order preservation
-        let table: Table = content
-            .parse()
-            .map_err(|e| VaultError::Other(format!("TOML parse error: {e}")))?;
+        let table: Table = content.parse().map_err(|e| {
+            // T078-T079: Enhance error message with scope detection
+            let error_msg = format!("{e}");
+            let enhanced_msg = self.enhance_parse_error(&error_msg, content);
+            VaultError::Other(enhanced_msg)
+        })?;
 
         // Check version
         if let Some(version) = table.get("version").and_then(|v| v.as_str()) {
@@ -259,6 +262,39 @@ impl TomlParser {
         }
 
         Ok(())
+    }
+
+    /// Enhance TOML parse error messages with scope detection (T078-T079)
+    fn enhance_parse_error(&self, original_error: &str, content: &str) -> String {
+        use regex::Regex;
+
+        let mut enhanced = format!("Failed to parse vault file: {original_error}");
+
+        // Try to detect invalid scope names using regex
+        let section_regex = Regex::new(r"\[([^\]]+)\]").unwrap();
+
+        for line in content.lines() {
+            if let Some(captures) = section_regex.captures(line) {
+                let scope = captures.get(1).unwrap().as_str();
+
+                // Check if scope contains invalid characters
+                if scope.contains(' ') {
+                    enhanced.push_str(&format!("\n\nSuspected invalid scope: '{scope}'"));
+                    enhanced.push_str("\nIssue: Spaces are not supported in scope names");
+                    enhanced.push_str(&format!(
+                        "\nSuggestion: Use '{}' instead of '{}'",
+                        scope.replace(' ', "."),
+                        scope
+                    ));
+                    enhanced.push_str(
+                        "\n\nTo check all invalid scopes before fixing, run: vaultify validate",
+                    );
+                    break;
+                }
+            }
+        }
+
+        enhanced
     }
 }
 
@@ -514,7 +550,7 @@ tags = ["finance", "important"]
         let parser = TomlParser::new();
         let formatted = parser.format(&doc);
 
-        assert!(formatted.contains("version = \"v0.3.1\""));
+        assert!(formatted.contains("version = \"v0.4.0\""));
         assert!(formatted.contains("[work.email]")); // Now using native TOML dotted notation
         assert!(formatted.contains("description = \"Work email\""));
         assert!(formatted.contains("expires = \"2025-12-31\""));

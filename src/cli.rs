@@ -11,6 +11,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 /// Secure password manager with hierarchical organization.
+///
+/// Scope names must follow format: [A-Za-z0-9._-] (ASCII alphanumeric, dots, hyphens, underscores).
+/// Run 'vaultify validate' to check your vault for invalid scopes.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -57,6 +60,7 @@ pub enum Commands {
     /// Add a new secret to the vault
     Add {
         /// Secret scope (e.g., personal.email.gmail)
+        /// Format: ASCII alphanumeric, dots, hyphens, underscores only [A-Za-z0-9._-]
         scope: String,
 
         /// Description of the secret
@@ -107,6 +111,7 @@ pub enum Commands {
     /// Edit an existing entry
     Edit {
         /// Secret scope
+        /// Format: ASCII alphanumeric, dots, hyphens, underscores only [A-Za-z0-9._-]
         scope: String,
 
         /// New description
@@ -138,6 +143,7 @@ pub enum Commands {
         old_scope: String,
 
         /// New scope
+        /// Format: ASCII alphanumeric, dots, hyphens, underscores only [A-Za-z0-9._-]
         new_scope: String,
     },
 
@@ -165,6 +171,12 @@ pub enum Commands {
         /// Output file (default: vault.toml)
         #[arg(short = 'O', long = "output-file")]
         output_file: Option<PathBuf>,
+    },
+
+    /// Validate vault file for invalid scopes (v0.4.0)
+    Validate {
+        /// Path to vault file (optional, defaults to auto-detect)
+        vault_file: Option<PathBuf>,
     },
 }
 
@@ -233,6 +245,7 @@ impl Cli {
             Commands::GpgDecrypt { input, output_file } => {
                 self.gpg_decrypt(input.as_deref(), output_file.as_deref())
             }
+            Commands::Validate { vault_file } => self.validate_vault(vault_file.as_deref()),
         }
     }
 
@@ -637,6 +650,59 @@ impl Cli {
 
         Ok(lines.join("\n"))
     }
+
+    /// Validate vault file for invalid scopes (T094-T095)
+    fn validate_vault(&self, vault_file: Option<&Path>) -> Result<()> {
+        use crate::operations::validate_vault_file;
+        use crate::utils::success;
+        use colored::Colorize;
+
+        // T095: Auto-detect vault file if not provided
+        let path = if let Some(p) = vault_file {
+            p.to_path_buf()
+        } else {
+            self.get_vault_file()?
+        };
+
+        if !path.exists() {
+            eprintln!(
+                "{}",
+                format!("✗ Vault file not found: {}", path.display()).red()
+            );
+            std::process::exit(1);
+        }
+
+        let report = validate_vault_file(&path)?;
+
+        if report.is_valid() {
+            success("✓ Vault file is valid");
+            if let Some(version) = &report.vault_version {
+                println!("  Version: {version}");
+            }
+            println!("  All scopes follow proper naming conventions");
+        } else {
+            println!("{}", "✗ Found invalid scopes in vault file:".red().bold());
+            println!();
+
+            for issue in &report.issues {
+                println!("{issue}");
+                println!();
+            }
+
+            if let Some(parse_err) = &report.parse_error {
+                println!("{}", "Parse Error:".yellow().bold());
+                println!("  {parse_err}");
+                println!();
+            }
+
+            println!(
+                "{}",
+                "Fix these issues before using with vaultify v0.4.0".yellow()
+            );
+        }
+
+        std::process::exit(report.exit_code());
+    }
 }
 
 #[cfg(test)]
@@ -645,13 +711,13 @@ mod tests {
 
     #[test]
     fn test_validate_scope_name() {
-        assert!(utils::validate_scope_name("personal.email"));
-        assert!(utils::validate_scope_name("work.vpn"));
-        assert!(!utils::validate_scope_name(""));
-        assert!(!utils::validate_scope_name("personal.."));
-        assert!(!utils::validate_scope_name("personal..."));
-        assert!(!utils::validate_scope_name(".personal"));
-        assert!(!utils::validate_scope_name("personal."));
+        assert!(utils::validate_scope_name("personal.email").is_ok());
+        assert!(utils::validate_scope_name("work.vpn").is_ok());
+        assert!(utils::validate_scope_name("").is_err());
+        assert!(utils::validate_scope_name("personal..").is_err());
+        assert!(utils::validate_scope_name("personal...").is_err());
+        assert!(utils::validate_scope_name(".personal").is_err());
+        assert!(utils::validate_scope_name("personal.").is_err());
     }
 
     #[test]

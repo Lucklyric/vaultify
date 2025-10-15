@@ -1,6 +1,6 @@
 //! Utility functions for vault operations.
 
-use crate::error::{Result, VaultError};
+use crate::error::{Result, ScopeValidationError, ValidationErrorKind, VaultError};
 use colored::*;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,75 @@ use std::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+/// Unicode whitespace characters to reject
+const UNICODE_WHITESPACE: &[char] = &[
+    '\u{00A0}', // NO-BREAK SPACE
+    '\u{2003}', // EM SPACE
+    '\u{2009}', // THIN SPACE
+    '\u{200A}', // HAIR SPACE
+    '\u{202F}', // NARROW NO-BREAK SPACE
+];
+
+/// Check if character is valid in scope names
+fn is_valid_scope_char(ch: char) -> bool {
+    matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '-' | '_')
+}
+
+/// Check if character is Unicode whitespace variant
+fn is_unicode_whitespace(ch: char) -> bool {
+    UNICODE_WHITESPACE.contains(&ch)
+}
+
+/// Calculate 1-based character position from byte index
+fn char_position_from_byte_index(input: &str, byte_index: usize) -> usize {
+    input[..byte_index].chars().count() + 1
+}
+
+/// Validate that a scope part doesn't have invalid boundaries
+fn validate_part_boundaries(part: &str, part_start_pos: usize) -> Result<()> {
+    if part.starts_with('-') {
+        return Err(ScopeValidationError::new(
+            part,
+            ValidationErrorKind::HyphenAtBoundary {
+                position: part_start_pos,
+                part_boundary: "start".to_string(),
+            },
+        )
+        .into());
+    }
+    if part.ends_with('-') {
+        return Err(ScopeValidationError::new(
+            part,
+            ValidationErrorKind::HyphenAtBoundary {
+                position: part_start_pos + part.chars().count() - 1,
+                part_boundary: "end".to_string(),
+            },
+        )
+        .into());
+    }
+    if part.starts_with('_') {
+        return Err(ScopeValidationError::new(
+            part,
+            ValidationErrorKind::UnderscoreAtBoundary {
+                position: part_start_pos,
+                part_boundary: "start".to_string(),
+            },
+        )
+        .into());
+    }
+    if part.ends_with('_') {
+        return Err(ScopeValidationError::new(
+            part,
+            ValidationErrorKind::UnderscoreAtBoundary {
+                position: part_start_pos + part.chars().count() - 1,
+                part_boundary: "end".to_string(),
+            },
+        )
+        .into());
+    }
+    Ok(())
+}
 
 /// Parse a scope path string into components.
 pub fn parse_scope_path(scope: &str) -> Vec<String> {
@@ -23,50 +92,106 @@ pub fn format_scope_path(parts: &[String]) -> String {
     parts.join(".")
 }
 
-/// Validate a scope name.
-pub fn validate_scope_name(scope: &str) -> bool {
+/// Validate a scope name according to v0.4.0 rules.
+pub fn validate_scope_name(scope: &str) -> Result<()> {
+    let original_input = scope;
+    let scope = scope.trim();
+
+    // Check empty scope
     if scope.is_empty() {
-        return false;
+        return Err(
+            ScopeValidationError::new(original_input, ValidationErrorKind::EmptyScope).into(),
+        );
     }
 
-    // Check for invalid characters
-    let invalid_chars = ['<', '>', '|', '\\', '\n', '\t', '\r'];
-    if scope.chars().any(|c| invalid_chars.contains(&c)) {
-        return false;
+    // Check maximum length
+    const MAX_LENGTH: usize = 256;
+    if scope.len() > MAX_LENGTH {
+        return Err(ScopeValidationError::new(
+            scope,
+            ValidationErrorKind::TooLong {
+                length: scope.len(),
+                maximum: MAX_LENGTH,
+            },
+        )
+        .into());
     }
 
-    // Don't allow leading or trailing dots
-    if scope.starts_with('.') || scope.ends_with('.') {
-        return false;
+    // Check leading dot
+    if scope.starts_with('.') {
+        return Err(ScopeValidationError::new(scope, ValidationErrorKind::LeadingDot).into());
     }
 
-    // Don't allow consecutive dots
+    // Check trailing dot
+    if scope.ends_with('.') {
+        return Err(ScopeValidationError::new(scope, ValidationErrorKind::TrailingDot).into());
+    }
+
+    // Character-by-character validation with position tracking
+    for (byte_idx, ch) in scope.char_indices() {
+        let position = char_position_from_byte_index(scope, byte_idx);
+
+        if !ch.is_ascii() {
+            return Err(ScopeValidationError::new(
+                scope,
+                ValidationErrorKind::NonAsciiCharacter {
+                    character: ch,
+                    position,
+                },
+            )
+            .into());
+        }
+        if is_unicode_whitespace(ch) {
+            return Err(ScopeValidationError::new(
+                scope,
+                ValidationErrorKind::UnicodeWhitespace {
+                    character: ch,
+                    position,
+                },
+            )
+            .into());
+        }
+        if ch == ' ' {
+            return Err(ScopeValidationError::new(
+                scope,
+                ValidationErrorKind::ContainsSpace { position },
+            )
+            .into());
+        }
+        if !is_valid_scope_char(ch) {
+            return Err(ScopeValidationError::new(
+                scope,
+                ValidationErrorKind::InvalidCharacter {
+                    character: ch,
+                    position,
+                },
+            )
+            .into());
+        }
+    }
+
+    // Check consecutive dots
     if scope.contains("..") {
-        return false;
+        if let Some(idx) = scope.find("..") {
+            let start = char_position_from_byte_index(scope, idx);
+            let end = start + 1;
+            return Err(ScopeValidationError::new(
+                scope,
+                ValidationErrorKind::ConsecutiveDots { start, end },
+            )
+            .into());
+        }
     }
 
-    // Check each part
+    // Validate part boundaries
     let parts: Vec<&str> = scope.split('.').collect();
-    for part in parts.iter() {
-        // All parts should be non-empty after the above checks
-        if part.is_empty() {
-            return false;
-        }
-
-        // Don't allow . or .. as entire part (already handled by consecutive dots check)
-        if *part == "." || *part == ".." {
-            return false;
-        }
-
-        // First character restrictions
-        if let Some(first) = (*part).chars().next() {
-            if first == '-' || first == '_' {
-                return false;
-            }
-        }
+    let mut current_pos = 1;
+    for part in parts {
+        validate_part_boundaries(part, current_pos)?;
+        current_pos += part.chars().count() + 1;
     }
 
-    true
+    Ok(())
 }
 
 /// Find a vault file in the current directory or parents.
@@ -401,17 +526,17 @@ mod tests {
 
     #[test]
     fn test_validate_scope_name() {
-        assert!(validate_scope_name("personal.banking"));
-        assert!(validate_scope_name("work-stuff"));
-        assert!(validate_scope_name("test_123"));
+        assert!(validate_scope_name("personal.banking").is_ok());
+        assert!(validate_scope_name("work-stuff").is_ok());
+        assert!(validate_scope_name("test_123").is_ok());
 
-        assert!(!validate_scope_name(""));
-        assert!(!validate_scope_name("with<angle>"));
-        assert!(!validate_scope_name("with|pipe"));
-        assert!(!validate_scope_name("personal.."));
-        assert!(!validate_scope_name("personal..."));
-        assert!(!validate_scope_name(".personal"));
-        assert!(!validate_scope_name("personal."));
+        assert!(validate_scope_name("").is_err());
+        assert!(validate_scope_name("with<angle>").is_err());
+        assert!(validate_scope_name("with|pipe").is_err());
+        assert!(validate_scope_name("personal..").is_err());
+        assert!(validate_scope_name("personal...").is_err());
+        assert!(validate_scope_name(".personal").is_err());
+        assert!(validate_scope_name("personal.").is_err());
     }
 
     #[test]
