@@ -8,16 +8,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use toml::value::Table;
 
-/// TOML format metadata
-#[derive(Debug, Serialize, Deserialize)]
-struct VaultMetadata {
-    version: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    created: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    modified: Option<String>,
-}
-
 /// TOML entry structure
 #[derive(Debug, Serialize, Deserialize)]
 struct TomlEntry {
