@@ -8,17 +8,17 @@ A secure, file-based password manager with hierarchical organization. Written in
 
 ## Features
 
-- 🔐 **Per-item encryption** with Argon2id + AES-256-GCM
-- 📁 **Hierarchical organization** of secrets
-- 📝 **TOML-based** vault format for easy editing and versioning
-- 🔍 **Fast filtering** of entries
-- 📋 **Clipboard integration** with automatic clearing
-- 🚀 **Interactive and CLI modes**
-- 🦀 **Written in Rust** for performance and security
-- 📦 **Easy installation** via npm or pre-built binaries
-- 🔑 **GPG integration** for additional vault encryption
-- 💾 **Automatic backups** when modifying vault files
-- 🛡️ **Overwrite protection** with user prompts
+- **Per-item encryption** with Argon2id + AES-256-GCM
+- **Hierarchical organization** of secrets
+- **TOML-based** vault format for easy editing and versioning
+- **Fast filtering** of entries
+- **Clipboard integration** with automatic clearing
+- **Interactive and CLI modes**
+- **Written in Rust** for performance and security
+- **Easy installation** via npm or pre-built binaries
+- **GPG integration** for additional vault encryption
+- **Automatic backups** when modifying vault files
+- **Overwrite protection** with user prompts
 
 ## Installation
 
@@ -144,7 +144,7 @@ vaultify> exit
 
 Starting in version 0.4.0, vaultify enforces strict validation rules for scope names to prevent vault file corruption.
 
-### ✅ Valid Characters
+### Valid Characters
 
 Scope names can only contain:
 - **Letters**: `A-Z`, `a-z`
@@ -154,25 +154,25 @@ Scope names can only contain:
 
 **ASCII Only**: No Unicode or special characters allowed for security.
 
-### ✅ Structure Rules
+### Structure Rules
 
 1. **Dots separate parts**: Use dots to create hierarchy
    - Example: `work.email.gmail`
 
 2. **No leading/trailing dots**: Must start and end with alphanumeric
-   - ❌ `.work` → ✅ `work`
-   - ❌ `work.` → ✅ `work`
+   - Invalid: `.work` - Valid: `work`
+   - Invalid: `work.` - Valid: `work`
 
 3. **No consecutive dots**: Each dot must separate valid parts
-   - ❌ `work..email` → ✅ `work.email`
+   - Invalid: `work..email` - Valid: `work.email`
 
 4. **No spaces**: Use dots instead
-   - ❌ `work email` → ✅ `work.email`
+   - Invalid: `work email` - Valid: `work.email`
 
 5. **Hyphens/underscores within parts only**: Not at boundaries
-   - ❌ `-work` → ✅ `my-work`
-   - ❌ `work-` → ✅ `my-work`
-   - ✅ `my-work.my-email` (valid)
+   - Invalid: `-work` - Valid: `my-work`
+   - Invalid: `work-` - Valid: `my-work`
+   - Valid: `my-work.my-email`
 
 6. **Maximum length**: 256 characters
 
@@ -190,7 +190,7 @@ vaultify validate path/to/vault.toml
 
 **Example output** (if invalid):
 ```
-✗ Found 2 invalid scopes in vault file:
+ERROR: Found 2 invalid scopes in vault file:
 
 Line 5: [work email]
   Invalid scope 'work email' at position 5: found space character

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-10-15
 
-###   BREAKING CHANGES
+### BREAKING CHANGES
 
 This release introduces strict scope validation to prevent vault file corruption. Invalid scope names (especially those with spaces) are now rejected with clear error messages.
 
@@ -33,13 +33,13 @@ This release introduces strict scope validation to prevent vault file corruption
 ### Changed
 
 - **Scope naming rules now strictly enforced**:
-  - L Spaces not allowed ’ Use dots: `work.email` instead of `work email`
-  - L Leading/trailing dots not allowed ’ Must start/end with alphanumeric
-  - L Consecutive dots not allowed ’ Each dot must separate valid parts
-  - L Hyphens/underscores at part boundaries not allowed ’ Must be within parts
-  - L Non-ASCII characters not allowed ’ ASCII-only for security
-  - L Unicode whitespace variants not allowed ’ Only regular trimmed spaces
-  -  Maximum scope length: 256 characters
+  - Spaces not allowed - Use dots: `work.email` instead of `work email`
+  - Leading/trailing dots not allowed - Must start/end with alphanumeric
+  - Consecutive dots not allowed - Each dot must separate valid parts
+  - Hyphens/underscores at part boundaries not allowed - Must be within parts
+  - Non-ASCII characters not allowed - ASCII-only for security
+  - Unicode whitespace variants not allowed - Only regular trimmed spaces
+  - Maximum scope length: 256 characters
 
 - **Enhanced error messages**
   - Parse errors now suggest invalid scope issues when TOML parsing fails
@@ -61,10 +61,10 @@ This release introduces strict scope validation to prevent vault file corruption
    ```
 
 2. **If issues found**, manually edit `vault.toml`:
-   - Replace spaces with dots in scope names: `[work email]` ’ `[work.email]`
-   - Fix consecutive dots: `[work..email]` ’ `[work.email]`
-   - Remove leading/trailing dots: `[.work]` ’ `[work]`
-   - Fix hyphens at boundaries: `[work.-email]` ’ `[work.my-email]`
+   - Replace spaces with dots in scope names: `[work email]` to `[work.email]`
+   - Fix consecutive dots: `[work..email]` to `[work.email]`
+   - Remove leading/trailing dots: `[.work]` to `[work]`
+   - Fix hyphens at boundaries: `[work.-email]` to `[work.my-email]`
 
 3. **Validate again** to confirm:
    ```bash
@@ -78,13 +78,13 @@ This release introduces strict scope validation to prevent vault file corruption
 
 5. **Use normally** - version will auto-upgrade to v0.4.0
 
-**Example invalid ’ valid transformations**:
-- `work email` ’ `work.email`
-- `work..email` ’ `work.email`
-- `.work` ’ `work`
-- `work.` ’ `work`
-- `work.-email` ’ `work.email` or `work.my-email`
-- `café` ’ `cafe`
+**Example invalid to valid transformations**:
+- `work email` to `work.email`
+- `work..email` to `work.email`
+- `.work` to `work`
+- `work.` to `work`
+- `work.-email` to `work.email` or `work.my-email`
+- `cafÃ©` to `cafe`
 
 ### Security
 
